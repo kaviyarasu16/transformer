@@ -1,0 +1,62 @@
+# Binary files
+transformer
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# Test outputs
+test-*/
+*-infrastructure*/
+complete-infrastructure*/
+
+# Generated OpenTofu files (should be in output directories)
+*.tf
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Coverage reports
+coverage/
+*.out
+
+# Go specific
+*.test
+*.prof 

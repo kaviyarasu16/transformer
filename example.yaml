@@ -1,0 +1,166 @@
+# AWS to OpenTofu Transformer Configuration Example
+# This file demonstrates various configuration options for the transformer
+
+# Default tags to apply to all resources
+default_tags:
+  Environment: "production"
+  ManagedBy: "opentofu"
+  Project: "aws-transformer"
+  Owner: "devops-team"
+
+# Discovery settings
+discovery:
+  # Tags to include/exclude during discovery
+  include_tags:
+    - "Environment"
+    - "Project"
+    - "Owner"
+  
+  exclude_tags:
+    - "aws:autoscaling:groupName"
+    - "aws:cloudformation:logical-id"
+  
+  # Resource-specific discovery settings
+  resources:
+    vpc:
+      include_default_vpc: false
+      include_peering_connections: true
+    
+    ec2:
+      include_terminated_instances: false
+      include_spot_instances: true
+      include_reserved_instances: false
+    
+    iam:
+      include_system_roles: false
+      include_service_roles: true
+      include_user_roles: true
+    
+    rds:
+      include_aurora_clusters: true
+      include_read_replicas: true
+      include_parameter_groups: false
+    
+    s3:
+      include_versioning: true
+      include_lifecycle_rules: true
+      include_encryption: true
+    
+    alb:
+      include_target_groups: true
+      include_listener_rules: true
+      include_ssl_certificates: true
+
+# Generation settings
+generation:
+  # Module structure
+  create_modules: true
+  module_depth: 1  # 1 = resource type level, 2 = service level
+  
+  # File organization
+  separate_files: true
+  include_comments: true
+  
+  # Version constraints
+  provider_version: "~> 5.0"
+  required_version: ">= 1.0"
+  
+  # Security and compliance
+  encrypt_sensitive_data: true
+  use_secrets_manager: false
+  enable_backup: true
+  enable_monitoring: true
+  enable_logging: true
+
+# Output format settings
+output_format:
+  style: "modular"  # modular, flat, or hybrid
+  naming_convention: "snake_case"  # snake_case, kebab-case, or camelCase
+  include_descriptions: true
+  include_examples: true
+
+# Validation settings
+validation:
+  check_syntax: true
+  validate_references: true
+  check_security_groups: true
+  verify_iam_permissions: false
+
+# Logging settings
+logging:
+  level: "info"  # debug, info, warn, error
+  include_timestamps: true
+  log_to_file: false
+  log_file_path: "./transformer.log"
+
+# Example configurations for different scenarios
+
+# Scenario 1: Basic infrastructure migration
+basic_migration:
+  discovery:
+    resources: ["vpc", "ec2", "iam", "rds"]
+  generation:
+    create_modules: true
+    separate_files: true
+  output_format:
+    style: "modular"
+    naming_convention: "snake_case"
+
+# Scenario 2: Complete infrastructure discovery
+complete_infrastructure:
+  discovery:
+    resources: "all"
+  generation:
+    create_modules: true
+    module_depth: 2
+    include_comments: true
+  output_format:
+    style: "hybrid"
+    include_descriptions: true
+
+# Scenario 3: Security-focused migration
+security_focused:
+  discovery:
+    resources: ["iam", "s3", "kms", "secretsmanager"]
+  generation:
+    encrypt_sensitive_data: true
+    use_secrets_manager: true
+    enable_monitoring: true
+    enable_logging: true
+  validation:
+    check_security_groups: true
+    verify_iam_permissions: true
+
+# Scenario 4: Development environment
+development:
+  discovery:
+    resources: ["vpc", "ec2", "rds", "s3"]
+  generation:
+    create_modules: false
+    separate_files: false
+    include_comments: false
+  output_format:
+    style: "flat"
+    naming_convention: "kebab-case"
+
+# Scenario 5: Production migration with compliance
+production_compliance:
+  discovery:
+    resources: "all"
+  generation:
+    create_modules: true
+    module_depth: 2
+    encrypt_sensitive_data: true
+    enable_backup: true
+    enable_monitoring: true
+    enable_logging: true
+  validation:
+    check_syntax: true
+    validate_references: true
+    check_security_groups: true
+    verify_iam_permissions: true
+  output_format:
+    style: "modular"
+    naming_convention: "snake_case"
+    include_descriptions: true
+    include_examples: true 
