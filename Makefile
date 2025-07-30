@@ -116,16 +116,6 @@ security:
 install: build
 	@echo "Installing $(BINARY_NAME)..."
 	cp $(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
-	@echo "Installed to /usr/local/bin/$(BINARY_NAME)"
-	@echo "You can now run: $(BINARY_NAME) --help"
-
-# Install using go install
-.PHONY: go-install
-go-install:
-	@echo "Installing $(BINARY_NAME) using go install..."
-	go install .
-	@echo "Installed using go install"
-	@echo "You can now run: $(BINARY_NAME) --help"
 
 # Uninstall the binary
 .PHONY: uninstall

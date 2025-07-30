@@ -15,18 +15,10 @@ var (
 	verbose bool
 )
 
-// Version information
-var (
-	Version = "1.0.0"
-	Commit  = "dev"
-	Date    = "unknown"
-)
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:     "transformer",
-	Version: Version,
-	Short:   "AWS to OpenTofu Infrastructure as Code Transformer",
+	Use:   "transformer",
+	Short: "AWS to OpenTofu Infrastructure as Code Transformer",
 	Long: `A CLI tool to transform existing AWS infrastructure into OpenTofu (formerly Terraform) 
 Infrastructure as Code (IaC) scripts. This tool discovers AWS resources and generates 
 corresponding OpenTofu configuration files.`,
