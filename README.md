@@ -8,7 +8,10 @@ A powerful CLI tool to transform existing AWS infrastructure into OpenTofu (form
 ```bash
 # Simple installer - downloads pre-built binary
 curl -sSL https://raw.githubusercontent.com/kaviyarasu16/transformer/main/install-simple.sh | bash
+```
+or
 
+```bash
 # Or use the full installer with options
 curl -sSL https://raw.githubusercontent.com/kaviyarasu16/transformer/main/install.sh | bash
 ```
