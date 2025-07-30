@@ -1,4 +1,4 @@
-module transformer
+module github.com/kaviyarasu16/transformer
 
 go 1.21
 
