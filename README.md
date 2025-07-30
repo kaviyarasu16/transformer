@@ -6,6 +6,10 @@ A powerful CLI tool to transform existing AWS infrastructure into OpenTofu (form
 
 ### One-liner Installation
 ```bash
+# Install directly with Go (recommended)
+go install github.com/kaviyarasu16/transformer@latest
+
+# Or use the installer script
 curl -sSL https://raw.githubusercontent.com/kaviyarasu16/transformer/main/install.sh | bash
 ```
 
