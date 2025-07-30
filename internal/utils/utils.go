@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"transformer/internal/aws"
+	"github.com/kaviyarasu16/transformer/internal/aws"
 )
 
 // GenerateSummary creates a summary of the transformation process

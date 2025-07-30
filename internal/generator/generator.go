@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"transformer/internal/aws"
+	"github.com/kaviyarasu16/transformer/internal/aws"
 )
 
 // Generator represents an OpenTofu configuration generator

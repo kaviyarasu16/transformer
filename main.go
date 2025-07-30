@@ -1,6 +1,6 @@
 package main
 
-import "transformer/cmd"
+import "github.com/kaviyarasu16/transformer/cmd"
 
 func main() {
 	cmd.Execute()

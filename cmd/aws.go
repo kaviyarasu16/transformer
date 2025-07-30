@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"transformer/internal/aws"
-	"transformer/internal/generator"
+	"github.com/kaviyarasu16/transformer/internal/aws"
+	"github.com/kaviyarasu16/transformer/internal/generator"
 )
 
 var (
