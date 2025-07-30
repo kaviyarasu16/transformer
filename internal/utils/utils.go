@@ -190,7 +190,7 @@ func GetResourceTypeDisplayName(resourceType string) string {
 		"athena":        "Athena",
 		"quicksight":    "QuickSight",
 		"workspaces":    "WorkSpaces",
-		"directoryservice": "Directory Service",
+		// Removed stub service: directoryservice
 		"fsx":           "FSx",
 		"storagegateway": "Storage Gateway",
 		"transfer":      "Transfer",
@@ -202,16 +202,13 @@ func GetResourceTypeDisplayName(resourceType string) string {
 		"medialive":     "MediaLive",
 		"mediatailor":   "MediaTailor",
 		"iot":           "IoT",
-		"greengrass":    "Greengrass",
-		"greengrassv2":  "Greengrass V2",
+		// Removed stub services: greengrass, greengrassv2
 		"iotanalytics":  "IoT Analytics",
 		"iotevents":     "IoT Events",
 		"iotsitewise":   "IoT SiteWise",
 		"iotthingsgraph": "IoT Things Graph",
 		"iotwireless":   "IoT Wireless",
-		"iotdeviceadvisor": "IoT Device Advisor",
-		"iotfleethub":   "IoT Fleet Hub",
-		"iotsecuretunneling": "IoT Secure Tunneling",
+		// Removed stub services: iotdeviceadvisor, iotfleethub, iotsecuretunneling
 
 	}
 

@@ -4,53 +4,102 @@ A powerful CLI tool that automatically discovers your existing AWS infrastructur
 
 ## 🚀 Features
 
-- **Comprehensive AWS Resource Discovery**: Supports 50+ AWS services including VPC, EC2, RDS, IAM, S3, ALB, Lambda, EKS, and more
+- **Comprehensive AWS Resource Discovery**: Supports 54 AWS services with full resource discovery and OpenTofu code generation
 - **Modular Architecture**: Generates clean, modular OpenTofu configurations with resource-specific modules
 - **Security Best Practices**: Properly handles sensitive data with variables and encryption
 - **Production Ready**: Includes comprehensive error handling, deduplication, and validation
 - **Cross-Platform**: Works on macOS, Linux, and Windows
+- **Modern Go Codebase**: Built with AWS SDK v2, easy to extend and maintain
 
 ## 📋 Supported AWS Services
 
-### Core Infrastructure
+### ✅ Fully Implemented Services (54)
+
+These services have complete resource discovery and OpenTofu code generation:
+
+#### Core Infrastructure
 - **VPC** - Virtual Private Clouds, Subnets, Route Tables, Internet Gateways
 - **EC2** - Instances, Security Groups, Key Pairs, Launch Templates
-- **RDS** - Database instances with proper password variable handling
 - **IAM** - Roles, Policies, Users, Groups with JSON policy formatting
-
-### Networking & Load Balancing
-- **ALB/ELB** - Application and Classic Load Balancers
+- **RDS** - Database instances with proper password variable handling
+- **S3** - Buckets with versioning and encryption
 - **Auto Scaling** - Auto Scaling Groups and Launch Configurations
+
+#### Networking & Load Balancing
+- **ALB/ELB** - Application and Classic Load Balancers
 - **Route53** - DNS records and hosted zones
 - **CloudFront** - Content delivery networks
+- **API Gateway** - REST and HTTP APIs
 
-### Compute & Containers
+#### Compute & Containers
 - **Lambda** - Serverless functions and layers
 - **ECS** - Container services and task definitions
 - **EKS** - Kubernetes clusters and node groups
 - **ECR** - Container registries
+- **Elastic Beanstalk** - Application environments
 
-### Storage & Databases
-- **S3** - Buckets with versioning and encryption
+#### Storage & Databases
 - **DynamoDB** - NoSQL database tables
 - **ElastiCache** - Redis and Memcached clusters
 - **Redshift** - Data warehouse clusters
+- **Neptune** - Graph database clusters
+- **DocumentDB** - MongoDB-compatible clusters
+- **FSx** - File systems
+- **Storage Gateway** - Hybrid storage solutions
+- **Transfer Family** - File transfer services
+- **Glacier** - Long-term storage vaults
 
-### Messaging & Integration
+#### Messaging & Integration
 - **SQS** - Message queues
 - **SNS** - Notification topics and subscriptions
-- **API Gateway** - REST and HTTP APIs
+- **MQ** - Message brokers
+- **Kinesis** - Real-time data streaming
+- **Firehose** - Data delivery streams
 
-### Monitoring & Logging
+#### Monitoring & Logging
 - **CloudWatch** - Metrics, alarms, and dashboards
 - **CloudTrail** - API logging and audit trails
-- **X-Ray** - Distributed tracing
+- **Config** - Configuration compliance
 
-### Security & Management
+#### Security & Management
 - **KMS** - Key management and encryption
 - **Secrets Manager** - Secret storage
 - **SSM** - Systems Manager parameters
-- **Config** - Configuration compliance
+- **GuardDuty** - Threat detection
+- **Backup** - Centralized backup service
+
+#### Analytics & Data Processing
+- **Glue** - ETL and data catalog
+- **Athena** - Query service
+- **QuickSight** - Business intelligence dashboards
+
+#### Media Services
+- **MediaStore** - Media storage containers
+- **MediaConvert** - File-based video transcoding
+- **MediaLive** - Live video processing
+- **MediaTailor** - Personalization service
+
+#### IoT & Edge Computing
+- **IoT Core** - Device connectivity and management
+- **IoT Analytics** - Analytics for IoT data
+- **IoT Events** - Event detection and response
+- **IoT SiteWise** - Industrial data collection
+- **IoT Things Graph** - Visual workflow modeling
+- **IoT Wireless** - Wireless connectivity
+
+#### Developer Tools
+- **CodeBuild** - Build service
+- **CodeDeploy** - Deployment service
+- **CodeCommit** - Source control
+- **CodePipeline** - CI/CD pipelines
+- **CloudFormation** - Infrastructure as code
+
+#### Enterprise Services
+- **WorkSpaces** - Virtual desktops
+
+### ✅ Fully Implemented Services (54)
+
+All services listed above are fully implemented and ready for production use.
 
 ## 🛠️ Installation
 
@@ -323,6 +372,11 @@ make build
 3. **Define Resource Type** in `internal/aws/types.go`
 4. **Add Generation Logic** in `internal/generator/generator.go`
 5. **Update CLI** in `cmd/aws.go`
+
+### Service Implementation Status
+
+- **Fully Implemented**: 54 services with complete discovery and generation
+- **Total Coverage**: 54 AWS services
 
 ## 📄 License
 

@@ -5,6 +5,31 @@ import (
 	"strings"
 )
 
+// SanitizeResourceName converts a resource name to a valid OpenTofu resource name
+func SanitizeResourceName(name string) string {
+	// Replace invalid characters with underscores
+	invalidChars := []string{" ", "-", ".", "/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := name
+	for _, char := range invalidChars {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+
+	// Ensure it starts with a letter
+	if len(result) > 0 && (result[0] < 'a' || result[0] > 'z') && (result[0] < 'A' || result[0] > 'Z') {
+		result = "resource_" + result
+	}
+
+	// Limit length but preserve uniqueness by keeping the end
+	if len(result) > 63 {
+		// Keep the first 50 characters and last 13 characters to preserve uniqueness
+		prefix := result[:50]
+		suffix := result[len(result)-13:]
+		result = prefix + "_" + suffix
+	}
+
+	return result
+}
+
 // Resource interface defines methods that all AWS resources must implement
 type Resource interface {
 	GetType() string
@@ -64,8 +89,7 @@ type VPCResource struct {
 
 func (r *VPCResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the base template
 	content := fmt.Sprintf(`resource "aws_vpc" "%s" {
@@ -83,8 +107,13 @@ func (r *VPCResource) ToOpenTofu() (string, error) {
 	// Add tags
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	
@@ -130,8 +159,7 @@ type BlockDeviceMapping struct {
 
 func (r *EC2InstanceResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the base template
 	content := fmt.Sprintf(`resource "aws_instance" "%s" {
@@ -177,8 +205,13 @@ func (r *EC2InstanceResource) ToOpenTofu() (string, error) {
   tags = {`
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	content += `
@@ -244,8 +277,7 @@ type IAMRoleResource struct {
 
 func (r *IAMRoleResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the main role resource
 	content := fmt.Sprintf(`resource "aws_iam_role" "%s" {
@@ -263,8 +295,13 @@ func (r *IAMRoleResource) ToOpenTofu() (string, error) {
 	// Add tags
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	
@@ -329,8 +366,7 @@ type Expiration struct {
 
 func (r *S3BucketResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the main bucket resource
 	content := fmt.Sprintf(`resource "aws_s3_bucket" "%s" {
@@ -342,8 +378,13 @@ func (r *S3BucketResource) ToOpenTofu() (string, error) {
 	// Add tags
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	
@@ -415,8 +456,7 @@ type RDSInstanceResource struct {
 
 func (r *RDSInstanceResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the base template
 	content := fmt.Sprintf(`resource "aws_db_instance" "%s" {
@@ -478,8 +518,13 @@ func (r *RDSInstanceResource) ToOpenTofu() (string, error) {
 	// Add tags
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	
@@ -504,8 +549,7 @@ type LoadBalancerResource struct {
 
 func (r *LoadBalancerResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the base template
 	content := fmt.Sprintf(`resource "aws_lb" "%s" {
@@ -551,8 +595,13 @@ func (r *LoadBalancerResource) ToOpenTofu() (string, error) {
 	// Add tags
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	
@@ -578,8 +627,7 @@ type LambdaFunctionResource struct {
 
 func (r *LambdaFunctionResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	// Build the base template
 	content := fmt.Sprintf(`resource "aws_lambda_function" "%s" {
@@ -624,8 +672,13 @@ func (r *LambdaFunctionResource) ToOpenTofu() (string, error) {
   tags = {`
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
+			// Quote tag keys that contain special characters
+			quotedKey := k
+			if strings.ContainsAny(k, ":-") {
+				quotedKey = fmt.Sprintf(`"%s"`, k)
+			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, k, v)
+    %s = "%s"`, quotedKey, v)
 		}
 	}
 	content += `
@@ -644,8 +697,7 @@ type GenericResource struct {
 
 func (r *GenericResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
-	resourceName := strings.ReplaceAll(r.Name, "-", "_")
-	resourceName = strings.ReplaceAll(resourceName, " ", "_")
+	resourceName := SanitizeResourceName(r.Name)
 	
 	content := fmt.Sprintf(`# Generic resource: %s
 # Resource type: %s

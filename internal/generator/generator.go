@@ -102,18 +102,7 @@ provider "aws" {
   }
 }
 
-# Global variables
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "%s"
-}
-
-variable "aws_account_id" {
-  description = "AWS account ID"
-  type        = string
-  default     = "YOUR_ACCOUNT_ID" # Replace with your actual account ID
-}
+# Global variables are defined in variables.tf
 
 # Data sources
 data "aws_caller_identity" "current" {}
@@ -121,7 +110,7 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 # Module calls
-`, region, region, region)
+`, region, region)
 
 	// Add module calls for each resource type
 	resourceTypes := make([]string, 0, len(resourceGroups))
@@ -146,19 +135,8 @@ module "%s" {
 		}
 	}
 
-	// Add outputs
+	// Outputs are defined in outputs.tf
 	content += `
-
-# Outputs
-output "region" {
-  description = "AWS region"
-  value       = data.aws_region.current.name
-}
-
-output "account_id" {
-  description = "AWS account ID"
-  value       = data.aws_caller_identity.current.account_id
-}
 `
 
 	// Add module outputs
