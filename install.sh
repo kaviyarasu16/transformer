@@ -14,7 +14,12 @@ PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Version
-INSTALLER_VERSION="1.0.0"
+INSTALLER_VERSION="2.0.0"
+TRANSFORMER_VERSION="1.0.0"
+
+# GitHub repository
+REPO="kaviyarasu16/transformer"
+REPO_URL="https://github.com/$REPO"
 
 # Function to print colored output
 print_status() {
@@ -37,6 +42,40 @@ print_header() {
     echo -e "${PURPLE}$1${NC}"
 }
 
+# Detect OS and architecture
+detect_platform() {
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    
+    case $ARCH in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            print_error "Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+    esac
+    
+    case $OS in
+        linux)
+            PLATFORM="linux"
+            ;;
+        darwin)
+            PLATFORM="darwin"
+            ;;
+        *)
+            print_error "Unsupported operating system: $OS"
+            exit 1
+            ;;
+    esac
+    
+    print_status "Detected platform: $PLATFORM-$ARCH"
+}
+
 # Show help
 show_help() {
     echo "AWS to OpenTofu Transformer CLI Installer v$INSTALLER_VERSION"
@@ -47,43 +86,18 @@ show_help() {
     echo "  -h, --help          Show this help message"
     echo "  -v, --version       Show installer version"
     echo "  -f, --force         Force reinstall"
-    echo "  -l, --local         Install from local source (requires Go)"
-    echo "  -r, --remote        Install from remote repository (default)"
+    echo "  -d, --directory     Specify installation directory (default: ~/.local/bin)"
+    echo "  -g, --go-install    Install using Go (requires Go to be installed)"
     echo
     echo "Installation Methods:"
-    echo "  1. Remote install (default): go install github.com/kaviyarasu16/transformer@latest"
-    echo "  2. Local install: go install . (from project directory)"
-    echo "  3. Manual build: make build"
+    echo "  1. Binary download (default): Downloads pre-built binary for your platform"
+    echo "  2. Go install: go install github.com/kaviyarasu16/transformer@latest"
     echo
     echo "Examples:"
-    echo "  $0                    # Install from remote repository"
-    echo "  $0 --local            # Install from local source"
+    echo "  $0                    # Install binary for current platform"
     echo "  $0 --force            # Force reinstall"
-}
-
-# Check if Go is installed
-check_go() {
-    if ! command -v go &> /dev/null; then
-        print_error "Go is not installed. Please install Go first:"
-        echo
-        echo "Installation options:"
-        echo "  1. Official installer: https://golang.org/doc/install"
-        echo "  2. Package managers:"
-        echo "     - macOS: brew install go"
-        echo "     - Ubuntu/Debian: sudo apt-get install golang-go"
-        echo "     - CentOS/RHEL: sudo yum install golang"
-        echo
-        exit 1
-    fi
-    
-    GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
-    print_success "Go version $GO_VERSION found"
-    
-    # Check if GOPATH is set
-    if [ -z "$GOPATH" ]; then
-        GOPATH=$(go env GOPATH)
-        print_warning "GOPATH not set, using default: $GOPATH"
-    fi
+    echo "  $0 --directory /usr/local/bin  # Install to specific directory"
+    echo "  $0 --go-install       # Install using Go"
 }
 
 # Check if transformer is already installed
@@ -104,38 +118,87 @@ check_existing() {
     fi
 }
 
-# Install from remote repository
-install_remote() {
-    print_status "Installing AWS to OpenTofu Transformer CLI from remote repository..."
+# Download binary from GitHub releases
+download_binary() {
+    local platform=$1
+    local arch=$2
+    local install_dir=$3
     
-    # Install using go install
+    print_status "Downloading transformer CLI for $platform-$arch..."
+    
+    # Create temporary directory
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR"
+    
+    # Download the binary
+    BINARY_NAME="transformer"
+    if [ "$platform" = "windows" ]; then
+        BINARY_NAME="transformer.exe"
+    fi
+    
+    DOWNLOAD_URL="$REPO_URL/releases/download/v$TRANSFORMER_VERSION/transformer-$platform-$arch"
+    if [ "$platform" = "windows" ]; then
+        DOWNLOAD_URL="$REPO_URL/releases/download/v$TRANSFORMER_VERSION/transformer-$platform-$arch.exe"
+    fi
+    
+    print_status "Downloading from: $DOWNLOAD_URL"
+    
+    # Download with curl
+    if curl -L -o "$BINARY_NAME" "$DOWNLOAD_URL" --progress-bar; then
+        print_success "Download completed"
+    else
+        print_error "Failed to download binary"
+        print_warning "Trying alternative download method..."
+        
+        # Try alternative method
+        if wget -O "$BINARY_NAME" "$DOWNLOAD_URL" 2>/dev/null; then
+            print_success "Download completed (alternative method)"
+        else
+            print_error "Failed to download binary. Please check your internet connection."
+            print_warning "You can manually download from: $REPO_URL/releases"
+            exit 1
+        fi
+    fi
+    
+    # Make executable
+    chmod +x "$BINARY_NAME"
+    
+    # Create installation directory if it doesn't exist
+    mkdir -p "$install_dir"
+    
+    # Install the binary
+    cp "$BINARY_NAME" "$install_dir/"
+    
+    # Clean up
+    cd - > /dev/null
+    rm -rf "$TEMP_DIR"
+    
+    print_success "Transformer CLI installed to $install_dir/$BINARY_NAME"
+}
+
+# Install using Go (alternative method)
+install_with_go() {
+    print_status "Installing using Go..."
+    
+    if ! command -v go &> /dev/null; then
+        print_error "Go is not installed. Please install Go first:"
+        echo
+        echo "Installation options:"
+        echo "  1. Official installer: https://golang.org/doc/install"
+        echo "  2. Package managers:"
+        echo "     - macOS: brew install go"
+        echo "     - Ubuntu/Debian: sudo apt-get install golang-go"
+        echo "     - CentOS/RHEL: sudo yum install golang"
+        echo
+        exit 1
+    fi
+    
     go install github.com/kaviyarasu16/transformer@latest
     
     if [ $? -eq 0 ]; then
-        print_success "Transformer CLI installed successfully from remote repository!"
+        print_success "Transformer CLI installed successfully using Go!"
     else
-        print_error "Failed to install transformer CLI from remote repository"
-        exit 1
-    fi
-}
-
-# Install from local source
-install_local() {
-    print_status "Installing AWS to OpenTofu Transformer CLI from local source..."
-    
-    # Check if we're in the project directory
-    if [ ! -f "go.mod" ] || [ ! -f "main.go" ]; then
-        print_error "Not in transformer project directory. Please run this script from the project root."
-        exit 1
-    fi
-    
-    # Install using go install
-    go install .
-    
-    if [ $? -eq 0 ]; then
-        print_success "Transformer CLI installed successfully from local source!"
-    else
-        print_error "Failed to install transformer CLI from local source"
+        print_error "Failed to install transformer CLI using Go"
         exit 1
     fi
 }
@@ -145,10 +208,10 @@ verify_installation() {
     print_status "Verifying installation..."
     
     if command -v transformer &> /dev/null; then
-        TRANSFORMER_VERSION=$(transformer --version 2>/dev/null || echo "unknown")
+        TRANSFORMER_VERSION_OUTPUT=$(transformer --version 2>/dev/null || echo "unknown")
         TRANSFORMER_PATH=$(which transformer)
         print_success "Transformer CLI is installed and working!"
-        print_status "Version: $TRANSFORMER_VERSION"
+        print_status "Version: $TRANSFORMER_VERSION_OUTPUT"
         print_status "Location: $TRANSFORMER_PATH"
         
         # Test basic functionality
@@ -159,8 +222,8 @@ verify_installation() {
         fi
     else
         print_error "Transformer CLI not found in PATH"
-        print_warning "You may need to add Go bin directory to your PATH:"
-        echo "  export PATH=\$PATH:\$(go env GOPATH)/bin"
+        print_warning "You may need to add the installation directory to your PATH:"
+        echo "  export PATH=\$PATH:$INSTALL_DIR"
         echo
         print_warning "Add this to your shell profile (.bashrc, .zshrc, etc.) for permanent access"
         exit 1
@@ -186,13 +249,14 @@ show_usage() {
     echo "     transformer aws --region=us-east-1 --all --output=./complete-infrastructure"
     echo
     print_header "Documentation:"
-    echo "  GitHub: https://github.com/kaviyarasu16/transformer"
-    echo "  Issues: https://github.com/kaviyarasu16/transformer/issues"
+    echo "  GitHub: $REPO_URL"
+    echo "  Issues: $REPO_URL/issues"
 }
 
 # Parse command line arguments
 FORCE="false"
-INSTALL_METHOD="remote"
+INSTALL_METHOD="binary"
+INSTALL_DIR="$HOME/.local/bin"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -208,12 +272,12 @@ while [[ $# -gt 0 ]]; do
             FORCE="true"
             shift
             ;;
-        -l|--local)
-            INSTALL_METHOD="local"
-            shift
+        -d|--directory)
+            INSTALL_DIR="$2"
+            shift 2
             ;;
-        -r|--remote)
-            INSTALL_METHOD="remote"
+        -g|--go-install)
+            INSTALL_METHOD="go"
             shift
             ;;
         *)
@@ -230,15 +294,21 @@ main() {
     echo "================================================================"
     echo
     
-    check_go
     check_existing
     
     case $INSTALL_METHOD in
-        "local")
-            install_local
+        "binary")
+            detect_platform
+            download_binary "$PLATFORM" "$ARCH" "$INSTALL_DIR"
+            
+            # Add to PATH if not already there
+            if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+                print_warning "Adding $INSTALL_DIR to PATH for this session"
+                export PATH="$PATH:$INSTALL_DIR"
+            fi
             ;;
-        "remote")
-            install_remote
+        "go")
+            install_with_go
             ;;
         *)
             print_error "Unknown installation method: $INSTALL_METHOD"
