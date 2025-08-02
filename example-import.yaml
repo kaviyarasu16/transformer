@@ -1,0 +1,50 @@
+# Example configuration for AWS Transformer Import Feature
+# This file demonstrates how to use the import command to generate OpenTofu import statements
+
+# Basic import example - import specific resource types
+# Command: transformer import --resources vpc,ec2,iam --verbose
+
+# Import all supported resources
+# Command: transformer import --all --verbose
+
+# Import with custom output file
+# Command: transformer import --resources s3,rds --file my-import.tf --verbose
+
+# Import with state file generation
+# Command: transformer import --resources vpc,ec2 --state terraform.tfstate --verbose
+
+# Import with custom output directory
+# Command: transformer import --resources lambda,sqs --output ./my-imports --verbose
+
+# Example workflow:
+# 1. Discover and generate import statements
+#    transformer import --resources vpc,ec2,iam --verbose
+#
+# 2. Review generated files:
+#    - import.tf (resource definitions and import commands)
+#    - import.sh (automated import script)
+#    - README.md (import guide)
+#
+# 3. Customize resource definitions in import.tf
+#
+# 4. Run import process:
+#    chmod +x import.sh
+#    ./import.sh
+#
+# 5. Verify and apply:
+#    tofu plan
+#    tofu apply
+
+# Supported resource types for import:
+# Core Infrastructure: vpc, ec2, iam, rds, s3, alb, elb, asg, lambda, sqs, sns
+# Monitoring & Logging: cloudwatch, cloudtrail, config
+# Containers & Orchestration: ecs, eks, ecr
+# Databases: elasticache, redshift, dynamodb, elasticsearch, neptune, docdb
+# Networking & CDN: route53, cloudfront, apigateway
+# Development & CI/CD: codebuild, codedeploy, codecommit, codepipeline, elasticbeanstalk
+# Security & Management: ssm, secretsmanager, kms, guardduty
+# Storage & File Systems: fsx, backup, glacier, storagegateway, transfer
+# Analytics & Streaming: kinesis, firehose, glue, athena, quicksight
+# Media Services: mediastore, mediaconvert, medialive, mediatailor
+# IoT & Edge Computing: iot, iotanalytics, iotevents, iotsitewise, iotthingsgraph, iotwireless
+# Enterprise Services: workspaces, mq 

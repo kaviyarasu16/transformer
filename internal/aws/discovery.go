@@ -2,8 +2,10 @@ package aws
 
 import (
 	"context"
+
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -14,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
-	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+
 	"github.com/aws/aws-sdk-go-v2/service/codebuild"
 	"github.com/aws/aws-sdk-go-v2/service/codedeploy"
 	"github.com/aws/aws-sdk-go-v2/service/codecommit"
@@ -34,31 +36,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/fsx"
 	"github.com/aws/aws-sdk-go-v2/service/glacier"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
-	"github.com/aws/aws-sdk-go-v2/service/guardduty"
+
 	"github.com/aws/aws-sdk-go-v2/service/iam"
-	"github.com/aws/aws-sdk-go-v2/service/iot"
-	"github.com/aws/aws-sdk-go-v2/service/iotanalytics"
-	"github.com/aws/aws-sdk-go-v2/service/iotevents"
-	"github.com/aws/aws-sdk-go-v2/service/iotsitewise"
-	"github.com/aws/aws-sdk-go-v2/service/iotthingsgraph"
-	"github.com/aws/aws-sdk-go-v2/service/iotwireless"
+
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/mediaconvert"
 	"github.com/aws/aws-sdk-go-v2/service/medialive"
 	"github.com/aws/aws-sdk-go-v2/service/mediastore"
-	"github.com/aws/aws-sdk-go-v2/service/mediatailor"
+
 	"github.com/aws/aws-sdk-go-v2/service/mq"
 	"github.com/aws/aws-sdk-go-v2/service/quicksight"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
+	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/storagegateway"
 	"github.com/aws/aws-sdk-go-v2/service/transfer"
@@ -73,6 +70,18 @@ func decodeURLEncodedJSON(encoded string) string {
 		return encoded
 	}
 	return decoded
+}
+
+// Helper function to parse string to int32
+func parseStringToInt32(s string) int32 {
+	if s == "" {
+		return 0
+	}
+	val, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return int32(val)
 }
 
 // Helper function to check if a resource has already been seen
@@ -93,6 +102,17 @@ func convertTags(tags []ec2types.Tag) map[string]string {
 		}
 	}
 	return result
+}
+
+// extractSecurityGroupIDs extracts security group IDs from VPC security group memberships
+func extractSecurityGroupIDs(vpcSecurityGroups []rdstypes.VpcSecurityGroupMembership) []string {
+	var securityGroupIDs []string
+	for _, sg := range vpcSecurityGroups {
+		if sg.VpcSecurityGroupId != nil {
+			securityGroupIDs = append(securityGroupIDs, *sg.VpcSecurityGroupId)
+		}
+	}
+	return securityGroupIDs
 }
 
 // discoverVPCResources discovers VPC resources
@@ -624,7 +644,64 @@ func (c *Client) discoverAutoScalingResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Convert VPC zone identifier
+		var vpcZoneIdentifier []string
+		if asg.VPCZoneIdentifier != nil {
+			vpcZoneIdentifier = strings.Split(*asg.VPCZoneIdentifier, ",")
+		}
+
+		// Convert target group ARNs
+		var targetGroupARNs []string
+		if asg.TargetGroupARNs != nil {
+			targetGroupARNs = asg.TargetGroupARNs
+		}
+
+		// Convert load balancer names
+		var loadBalancerNames []string
+		if asg.LoadBalancerNames != nil {
+			loadBalancerNames = asg.LoadBalancerNames
+		}
+
+		// Create launch template specification if present
+		var launchTemplate *LaunchTemplateSpecification
+		if asg.LaunchTemplate != nil {
+			launchTemplate = &LaunchTemplateSpecification{
+				ID:      aws.ToString(asg.LaunchTemplate.LaunchTemplateId),
+				Name:    aws.ToString(asg.LaunchTemplate.LaunchTemplateName),
+				Version: aws.ToString(asg.LaunchTemplate.Version),
+			}
+		}
+
+		// Create mixed instances policy if present
+		var mixedInstancesPolicy *MixedInstancesPolicy
+		if asg.MixedInstancesPolicy != nil {
+			var instancesDistribution *InstancesDistribution
+			if asg.MixedInstancesPolicy.InstancesDistribution != nil {
+				instancesDistribution = &InstancesDistribution{
+					OnDemandBaseCapacity:                aws.ToInt32(asg.MixedInstancesPolicy.InstancesDistribution.OnDemandBaseCapacity),
+					OnDemandPercentageAboveBaseCapacity: aws.ToInt32(asg.MixedInstancesPolicy.InstancesDistribution.OnDemandPercentageAboveBaseCapacity),
+					SpotAllocationStrategy:              aws.ToString(asg.MixedInstancesPolicy.InstancesDistribution.SpotAllocationStrategy),
+					SpotInstancePools:                   aws.ToInt32(asg.MixedInstancesPolicy.InstancesDistribution.SpotInstancePools),
+					SpotMaxPrice:                        aws.ToString(asg.MixedInstancesPolicy.InstancesDistribution.SpotMaxPrice),
+				}
+			}
+
+			var policyLaunchTemplate *LaunchTemplateSpecification
+			if asg.MixedInstancesPolicy.LaunchTemplate != nil && asg.MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification != nil {
+				policyLaunchTemplate = &LaunchTemplateSpecification{
+					ID:      aws.ToString(asg.MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.LaunchTemplateId),
+					Name:    aws.ToString(asg.MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.LaunchTemplateName),
+					Version: aws.ToString(asg.MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.Version),
+				}
+			}
+
+			mixedInstancesPolicy = &MixedInstancesPolicy{
+				LaunchTemplate:       policyLaunchTemplate,
+				InstancesDistribution: instancesDistribution,
+			}
+		}
+
+		resource := &ASGResource{
 			BaseResource: BaseResource{
 				Type:   "asg",
 				ID:     *asg.AutoScalingGroupName,
@@ -632,15 +709,20 @@ func (c *Client) discoverAutoScalingResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tags,
 			},
-			ResourceType: "aws_autoscaling_group",
-			Attributes: map[string]interface{}{
-				"name":                *asg.AutoScalingGroupName,
-				"max_size":            asg.MaxSize,
-				"min_size":            asg.MinSize,
-				"desired_capacity":    asg.DesiredCapacity,
-				"health_check_type":   asg.HealthCheckType,
-				"health_check_grace_period": asg.HealthCheckGracePeriod,
-			},
+			MaxSize:                aws.ToInt32(asg.MaxSize),
+			MinSize:                aws.ToInt32(asg.MinSize),
+			DesiredCapacity:        aws.ToInt32(asg.DesiredCapacity),
+			HealthCheckType:        aws.ToString(asg.HealthCheckType),
+			HealthCheckGracePeriod: aws.ToInt32(asg.HealthCheckGracePeriod),
+			VPCZoneIdentifier:      vpcZoneIdentifier,
+			LaunchTemplate:         launchTemplate,
+			MixedInstancesPolicy:   mixedInstancesPolicy,
+			TargetGroupARNs:        targetGroupARNs,
+			LoadBalancerNames:      loadBalancerNames,
+			ServiceLinkedRoleARN:   aws.ToString(asg.ServiceLinkedRoleARN),
+			MaxInstanceLifetime:    aws.ToInt32(asg.MaxInstanceLifetime),
+			CapacityRebalance:      aws.ToBool(asg.CapacityRebalance),
+			ProtectFromScaleIn:     aws.ToBool(asg.NewInstancesProtectedFromScaleIn),
 		}
 
 		resources = append(resources, resource)
@@ -691,53 +773,8 @@ func (c *Client) discoverLambdaResources() ([]Resource, error) {
 
 // discoverSQSResources discovers SQS queue resources
 func (c *Client) discoverSQSResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.sqsClient.ListQueues(context.TODO(), &sqs.ListQueuesInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list SQS queues: %w", err)
-	}
-
-	for _, queueURL := range result.QueueUrls {
-		// Get queue attributes
-		attributes, err := c.sqsClient.GetQueueAttributes(context.TODO(), &sqs.GetQueueAttributesInput{
-			QueueUrl: &queueURL,
-			AttributeNames: []types.QueueAttributeName{types.QueueAttributeNameAll},
-		})
-		if err != nil {
-			continue
-		}
-
-		// Extract queue name from URL
-		parts := strings.Split(queueURL, "/")
-		queueName := parts[len(parts)-1]
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "sqs",
-				ID:     queueName,
-				Name:   queueName,
-				Region: c.region,
-				Tags:   make(map[string]string), // SQS tags would need separate call
-			},
-			ResourceType: "aws_sqs_queue",
-			Attributes: map[string]interface{}{
-				"name": queueName,
-				"url":  queueURL,
-			},
-		}
-
-		// Add attributes if available
-		if attributes.Attributes != nil {
-			for k, v := range attributes.Attributes {
-				resource.Attributes[k] = v
-			}
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement SQS resource discovery
+	return []Resource{}, nil
 }
 
 // discoverSNSResources discovers SNS topic resources
@@ -754,7 +791,15 @@ func (c *Client) discoverSNSResources() ([]Resource, error) {
 		parts := strings.Split(*topic.TopicArn, ":")
 		topicName := parts[len(parts)-1]
 
-		resource := &GenericResource{
+		// Get topic attributes
+		attributes, err := c.snsClient.GetTopicAttributes(context.TODO(), &sns.GetTopicAttributesInput{
+			TopicArn: topic.TopicArn,
+		})
+		if err != nil {
+			continue
+		}
+
+		resource := &SNSResource{
 			BaseResource: BaseResource{
 				Type:   "sns",
 				ID:     topicName,
@@ -762,11 +807,10 @@ func (c *Client) discoverSNSResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   make(map[string]string), // SNS tags would need separate call
 			},
-			ResourceType: "aws_sns_topic",
-			Attributes: map[string]interface{}{
-				"name": topicName,
-				"arn":  *topic.TopicArn,
-			},
+			ARN:              *topic.TopicArn,
+			KMSMasterKeyID:   attributes.Attributes["KmsMasterKeyId"],
+			DeliveryPolicy:   attributes.Attributes["DeliveryPolicy"],
+			Policy:           attributes.Attributes["Policy"],
 		}
 
 		resources = append(resources, resource)
@@ -775,42 +819,10 @@ func (c *Client) discoverSNSResources() ([]Resource, error) {
 	return resources, nil
 }
 
-// discoverCloudWatchResources discovers CloudWatch resources
+// discoverCloudWatchResources discovers CloudWatch log group resources
 func (c *Client) discoverCloudWatchResources() ([]Resource, error) {
-	var resources []Resource
-
-	// Discover CloudWatch alarms
-	alarms, err := c.cloudwatchClient.DescribeAlarms(context.TODO(), &cloudwatch.DescribeAlarmsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to describe CloudWatch alarms: %w", err)
-	}
-
-	for _, alarm := range alarms.MetricAlarms {
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "cloudwatch",
-				ID:     *alarm.AlarmName,
-				Name:   *alarm.AlarmName,
-				Region: c.region,
-				Tags:   make(map[string]string), // CloudWatch tags would need separate call
-			},
-			ResourceType: "aws_cloudwatch_metric_alarm",
-			Attributes: map[string]interface{}{
-				"alarm_name":          *alarm.AlarmName,
-				"comparison_operator": alarm.ComparisonOperator,
-				"evaluation_periods":  alarm.EvaluationPeriods,
-				"metric_name":         alarm.MetricName,
-				"namespace":           alarm.Namespace,
-				"period":              alarm.Period,
-				"statistic":           alarm.Statistic,
-				"threshold":           alarm.Threshold,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement CloudWatch log group discovery
+	return []Resource{}, nil
 }
 
 // discoverCloudTrailResources discovers CloudTrail resources
@@ -823,7 +835,63 @@ func (c *Client) discoverCloudTrailResources() ([]Resource, error) {
 	}
 
 	for _, trail := range result.Trails {
-		resource := &GenericResource{
+		// Get trail details
+		trailDetails, err := c.cloudtrailClient.DescribeTrails(context.TODO(), &cloudtrail.DescribeTrailsInput{
+			TrailNameList: []string{*trail.Name},
+		})
+		if err != nil || len(trailDetails.TrailList) == 0 {
+			continue
+		}
+
+		trailInfo := trailDetails.TrailList[0]
+
+		// Get event selectors
+		var eventSelectors []*CloudTrailEventSelector
+		if trailInfo.HasCustomEventSelectors != nil && *trailInfo.HasCustomEventSelectors {
+			eventSelectorsResult, err := c.cloudtrailClient.GetEventSelectors(context.TODO(), &cloudtrail.GetEventSelectorsInput{
+				TrailName: trail.Name,
+			})
+			if err == nil && len(eventSelectorsResult.EventSelectors) > 0 {
+				for _, selector := range eventSelectorsResult.EventSelectors {
+					eventSelector := &CloudTrailEventSelector{
+						ReadWriteType:           string(selector.ReadWriteType),
+						IncludeManagementEvents: aws.ToBool(selector.IncludeManagementEvents),
+					}
+
+					// Add data resources if present
+					if len(selector.DataResources) > 0 {
+						for _, dataResource := range selector.DataResources {
+							eventSelector.DataResources = append(eventSelector.DataResources, &CloudTrailDataResource{
+								Type:   aws.ToString(dataResource.Type),
+								Values: dataResource.Values,
+							})
+						}
+					}
+
+					// Add exclude management event sources if present
+					if len(selector.ExcludeManagementEventSources) > 0 {
+						eventSelector.ExcludeManagementEventSources = selector.ExcludeManagementEventSources
+					}
+
+					eventSelectors = append(eventSelectors, eventSelector)
+				}
+			}
+		}
+
+		// Get insight selectors
+		var insightSelectors []*CloudTrailInsightSelector
+		insightSelectorsResult, err := c.cloudtrailClient.GetInsightSelectors(context.TODO(), &cloudtrail.GetInsightSelectorsInput{
+			TrailName: trail.Name,
+		})
+		if err == nil && len(insightSelectorsResult.InsightSelectors) > 0 {
+			for _, selector := range insightSelectorsResult.InsightSelectors {
+				insightSelectors = append(insightSelectors, &CloudTrailInsightSelector{
+					InsightType: string(selector.InsightType),
+				})
+			}
+		}
+
+		resource := &CloudTrailResource{
 			BaseResource: BaseResource{
 				Type:   "cloudtrail",
 				ID:     *trail.Name,
@@ -831,11 +899,17 @@ func (c *Client) discoverCloudTrailResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   make(map[string]string), // CloudTrail tags would need separate call
 			},
-			ResourceType: "aws_cloudtrail",
-			Attributes: map[string]interface{}{
-				"name": *trail.Name,
-				"s3_bucket_name": "unknown", // Would need separate API call to get S3 bucket name
-			},
+			Name:                    *trail.Name,
+			S3BucketName:            aws.ToString(trailInfo.S3BucketName),
+			S3KeyPrefix:             aws.ToString(trailInfo.S3KeyPrefix),
+			CloudWatchLogGroupARN:   aws.ToString(trailInfo.CloudWatchLogsLogGroupArn),
+			CloudWatchLogsRoleARN:   aws.ToString(trailInfo.CloudWatchLogsRoleArn),
+			IncludeGlobalServiceEvents: aws.ToBool(trailInfo.IncludeGlobalServiceEvents),
+			IsMultiRegionTrail:      aws.ToBool(trailInfo.IsMultiRegionTrail),
+			EnableLogFileValidation: aws.ToBool(trailInfo.LogFileValidationEnabled),
+			KMSKeyID:                aws.ToString(trailInfo.KmsKeyId),
+			EventSelectors:          eventSelectors,
+			InsightSelectors:        insightSelectors,
 		}
 
 		resources = append(resources, resource)
@@ -864,7 +938,54 @@ func (c *Client) discoverECSResources() ([]Resource, error) {
 
 		service := serviceDetails.Services[0]
 
-		resource := &GenericResource{
+		// Build network configuration if present
+		var networkConfig *NetworkConfiguration
+		if service.NetworkConfiguration != nil {
+			networkConfig = &NetworkConfiguration{
+				Subnets:        service.NetworkConfiguration.AwsvpcConfiguration.Subnets,
+				SecurityGroups: service.NetworkConfiguration.AwsvpcConfiguration.SecurityGroups,
+				AssignPublicIP: service.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp == "ENABLED",
+			}
+		}
+
+		// Build load balancers if present
+		var loadBalancers []*LoadBalancer
+		for _, lb := range service.LoadBalancers {
+			loadBalancers = append(loadBalancers, &LoadBalancer{
+				TargetGroupARN:   aws.ToString(lb.TargetGroupArn),
+				ContainerName:    aws.ToString(lb.ContainerName),
+				ContainerPort:    int32(aws.ToInt32(lb.ContainerPort)),
+			})
+		}
+
+		// Build service registries if present
+		var serviceRegistries []*ServiceRegistry
+		for _, registry := range service.ServiceRegistries {
+			serviceRegistries = append(serviceRegistries, &ServiceRegistry{
+				RegistryARN:   aws.ToString(registry.RegistryArn),
+				Port:          int32(aws.ToInt32(registry.Port)),
+				ContainerName: aws.ToString(registry.ContainerName),
+				ContainerPort: int32(aws.ToInt32(registry.ContainerPort)),
+			})
+		}
+
+		// Build deployment configuration if present
+		var deploymentConfig *DeploymentConfiguration
+		if service.DeploymentConfiguration != nil {
+			deploymentConfig = &DeploymentConfiguration{
+				MaximumPercent:        int32(aws.ToInt32(service.DeploymentConfiguration.MaximumPercent)),
+				MinimumHealthyPercent: int32(aws.ToInt32(service.DeploymentConfiguration.MinimumHealthyPercent)),
+			}
+
+			if service.DeploymentConfiguration.DeploymentCircuitBreaker != nil {
+				deploymentConfig.DeploymentCircuitBreaker = &DeploymentCircuitBreaker{
+					Enable:   service.DeploymentConfiguration.DeploymentCircuitBreaker.Enable,
+					Rollback: service.DeploymentConfiguration.DeploymentCircuitBreaker.Rollback,
+				}
+			}
+		}
+
+		resource := &ECSResource{
 			BaseResource: BaseResource{
 				Type:   "ecs",
 				ID:     *service.ServiceName,
@@ -872,13 +993,15 @@ func (c *Client) discoverECSResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   make(map[string]string), // ECS tags would need separate call
 			},
-			ResourceType: "aws_ecs_service",
-			Attributes: map[string]interface{}{
-				"name":            *service.ServiceName,
-				"cluster":         service.ClusterArn,
-				"task_definition": service.TaskDefinition,
-				"desired_count":   service.DesiredCount,
-			},
+			ClusterARN:        aws.ToString(service.ClusterArn),
+			TaskDefinitionARN: aws.ToString(service.TaskDefinition),
+			DesiredCount:      service.DesiredCount,
+			LaunchType:        string(service.LaunchType),
+			PlatformVersion:   aws.ToString(service.PlatformVersion),
+			NetworkConfiguration: networkConfig,
+			LoadBalancers:      loadBalancers,
+			ServiceRegistries:  serviceRegistries,
+			DeploymentConfiguration: deploymentConfig,
 		}
 
 		resources = append(resources, resource)
@@ -907,7 +1030,34 @@ func (c *Client) discoverEKSResources() ([]Resource, error) {
 
 		cluster := clusterDetails.Cluster
 
-		resource := &GenericResource{
+		// Extract VPC config
+		var vpcConfig *VPCConfig
+		if cluster.ResourcesVpcConfig != nil {
+			vpcConfig = &VPCConfig{
+				SubnetIDs:             cluster.ResourcesVpcConfig.SubnetIds,
+				SecurityGroupIDs:      cluster.ResourcesVpcConfig.SecurityGroupIds,
+				EndpointPrivateAccess: cluster.ResourcesVpcConfig.EndpointPrivateAccess,
+				EndpointPublicAccess:  cluster.ResourcesVpcConfig.EndpointPublicAccess,
+				PublicAccessCIDRs:     cluster.ResourcesVpcConfig.PublicAccessCidrs,
+			}
+		}
+
+		// Build encryption config if present
+		var encryptionConfig *EncryptionConfig
+		if cluster.EncryptionConfig != nil && len(cluster.EncryptionConfig) > 0 {
+			enc := cluster.EncryptionConfig[0]
+			encryptionConfig = &EncryptionConfig{
+				Provider: &EncryptionProvider{
+					KeyARN: aws.ToString(enc.Provider.KeyArn),
+				},
+				Resources: enc.Resources,
+			}
+		}
+
+		// Build kubernetes network config if present
+		// TODO: Implement proper kubernetes network config handling
+
+		resource := &EKSResource{
 			BaseResource: BaseResource{
 				Type:   "eks",
 				ID:     *cluster.Name,
@@ -915,13 +1065,12 @@ func (c *Client) discoverEKSResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   cluster.Tags,
 			},
-			ResourceType: "aws_eks_cluster",
-			Attributes: map[string]interface{}{
-				"name":     *cluster.Name,
-				"version":  cluster.Version,
-				"platform_version": cluster.PlatformVersion,
-				"endpoint": cluster.Endpoint,
-			},
+			Version:          aws.ToString(cluster.Version),
+			RoleARN:          aws.ToString(cluster.RoleArn),
+			PlatformVersion:  aws.ToString(cluster.PlatformVersion),
+			Endpoint:         aws.ToString(cluster.Endpoint),
+			VPCConfig:        vpcConfig,
+			EncryptionConfig: encryptionConfig,
 		}
 
 		resources = append(resources, resource)
@@ -955,7 +1104,17 @@ func (c *Client) discoverElastiCacheResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Convert security group IDs
+		var securityGroupIDs []string
+		if cluster.SecurityGroups != nil {
+			for _, sg := range cluster.SecurityGroups {
+				if sg.SecurityGroupId != nil {
+					securityGroupIDs = append(securityGroupIDs, *sg.SecurityGroupId)
+				}
+			}
+		}
+
+		resource := &ElastiCacheResource{
 			BaseResource: BaseResource{
 				Type:   "elasticache",
 				ID:     *cluster.CacheClusterId,
@@ -963,14 +1122,23 @@ func (c *Client) discoverElastiCacheResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_elasticache_cluster",
-			Attributes: map[string]interface{}{
-				"cluster_id":           *cluster.CacheClusterId,
-				"engine":               cluster.Engine,
-				"node_type":            cluster.CacheNodeType,
-				"num_cache_nodes":      cluster.NumCacheNodes,
-				"subnet_group_name":    cluster.CacheSubnetGroupName,
-			},
+			Engine:               aws.ToString(cluster.Engine),
+			NodeType:             aws.ToString(cluster.CacheNodeType),
+			NumCacheNodes:        aws.ToInt32(cluster.NumCacheNodes),
+			Port:                 6379, // Default Redis port
+			SubnetGroupName:      aws.ToString(cluster.CacheSubnetGroupName),
+			SecurityGroupIDs:     securityGroupIDs,
+			ParameterGroupName:   aws.ToString(cluster.CacheParameterGroup.CacheParameterGroupName),
+			EngineVersion:        aws.ToString(cluster.EngineVersion),
+			MultiAZEnabled:       false, // Default value
+			AutomaticFailoverEnabled: false, // Default value
+			AtRestEncryptionEnabled: false, // Default value
+			TransitEncryptionEnabled: false, // Default value
+			KMSKeyID:             "",
+			SnapshotRetentionLimit: 0,
+			SnapshotWindow:       "",
+			MaintenanceWindow:    "",
+			NotificationTopicARN: "",
 		}
 
 		resources = append(resources, resource)
@@ -1014,7 +1182,61 @@ func (c *Client) discoverDynamoDBResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Extract billing mode
+		billingMode := "PAY_PER_REQUEST"
+		if table.BillingModeSummary != nil {
+			billingMode = string(table.BillingModeSummary.BillingMode)
+		}
+
+		// Extract capacity settings
+		var readCapacity, writeCapacity int64
+		if table.ProvisionedThroughput != nil {
+			if table.ProvisionedThroughput.ReadCapacityUnits != nil {
+				readCapacity = *table.ProvisionedThroughput.ReadCapacityUnits
+			}
+			if table.ProvisionedThroughput.WriteCapacityUnits != nil {
+				writeCapacity = *table.ProvisionedThroughput.WriteCapacityUnits
+			}
+		}
+
+		// Extract hash key
+		var hashKey string
+		if len(table.KeySchema) > 0 && table.KeySchema[0].AttributeName != nil {
+			hashKey = *table.KeySchema[0].AttributeName
+		}
+
+		// Extract range key if present
+		var rangeKey string
+		if len(table.KeySchema) > 1 && table.KeySchema[1].AttributeName != nil {
+			rangeKey = *table.KeySchema[1].AttributeName
+		}
+
+		// Extract stream settings
+		var streamEnabled bool
+		var streamViewType string
+		if table.StreamSpecification != nil {
+			streamEnabled = *table.StreamSpecification.StreamEnabled
+			streamViewType = string(table.StreamSpecification.StreamViewType)
+		}
+
+		// Extract server-side encryption
+		var serverSideEncryption *ServerSideEncryption
+		if table.SSEDescription != nil {
+			serverSideEncryption = &ServerSideEncryption{
+				Enabled:   true,
+				KMSKeyARN: aws.ToString(table.SSEDescription.KMSMasterKeyArn),
+			}
+		}
+
+		// Extract point-in-time recovery
+		var pointInTimeRecovery *PointInTimeRecovery
+		// PointInTimeRecoveryDescription is not available in the current AWS SDK version
+		// Set default value for now
+		pointInTimeRecovery = &PointInTimeRecovery{
+			Enabled: false,
+		}
+
+		resource := &DynamoDBResource{
 			BaseResource: BaseResource{
 				Type:   "dynamodb",
 				ID:     *table.TableName,
@@ -1022,26 +1244,15 @@ func (c *Client) discoverDynamoDBResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_dynamodb_table",
-			Attributes: map[string]interface{}{
-				"name": *table.TableName,
-			},
-		}
-
-				// Add optional attributes with nil checks
-		if table.BillingModeSummary != nil {
-			resource.Attributes["billing_mode"] = table.BillingModeSummary.BillingMode
-		}
-		if table.ProvisionedThroughput != nil {
-			if table.ProvisionedThroughput.ReadCapacityUnits != nil {
-				resource.Attributes["read_capacity"] = *table.ProvisionedThroughput.ReadCapacityUnits
-			}
-			if table.ProvisionedThroughput.WriteCapacityUnits != nil {
-				resource.Attributes["write_capacity"] = *table.ProvisionedThroughput.WriteCapacityUnits
-			}
-		}
-		if len(table.KeySchema) > 0 && table.KeySchema[0].AttributeName != nil {
-			resource.Attributes["hash_key"] = *table.KeySchema[0].AttributeName
+			BillingMode:          billingMode,
+			ReadCapacity:         readCapacity,
+			WriteCapacity:        writeCapacity,
+			HashKey:              hashKey,
+			RangeKey:             rangeKey,
+			StreamEnabled:        streamEnabled,
+			StreamViewType:       streamViewType,
+			ServerSideEncryption: serverSideEncryption,
+			PointInTimeRecovery:  pointInTimeRecovery,
 		}
 
 		resources = append(resources, resource)
@@ -1063,7 +1274,21 @@ func (c *Client) discoverRedshiftResources() ([]Resource, error) {
 		// Redshift doesn't have a direct ListTagsForResource method, skip tags for now
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		// Extract security group IDs
+		var securityGroupIDs []string
+		for _, sg := range cluster.VpcSecurityGroups {
+			if sg.VpcSecurityGroupId != nil {
+				securityGroupIDs = append(securityGroupIDs, *sg.VpcSecurityGroupId)
+			}
+		}
+
+		// Extract endpoint port
+		var port int32
+		if cluster.Endpoint != nil && cluster.Endpoint.Port != nil {
+			port = *cluster.Endpoint.Port
+		}
+
+		resource := &RedshiftResource{
 			BaseResource: BaseResource{
 				Type:   "redshift",
 				ID:     *cluster.ClusterIdentifier,
@@ -1071,16 +1296,15 @@ func (c *Client) discoverRedshiftResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_redshift_cluster",
-			Attributes: map[string]interface{}{
-				"cluster_identifier":     *cluster.ClusterIdentifier,
-				"node_type":              *cluster.NodeType,
-				"number_of_nodes":        cluster.NumberOfNodes,
-				"master_username":        *cluster.MasterUsername,
-				"port":                   cluster.Endpoint.Port,
-				"vpc_security_group_ids": cluster.VpcSecurityGroups,
-				"cluster_subnet_group_name": cluster.ClusterSubnetGroupName,
-			},
+			ClusterIdentifier:     *cluster.ClusterIdentifier,
+			NodeType:              *cluster.NodeType,
+			NumberOfNodes:         *cluster.NumberOfNodes,
+			MasterUsername:        *cluster.MasterUsername,
+			Port:                  port,
+			VpcSecurityGroupIds:   securityGroupIDs,
+			ClusterSubnetGroupName: *cluster.ClusterSubnetGroupName,
+			Encrypted:             *cluster.Encrypted,
+			PubliclyAccessible:    *cluster.PubliclyAccessible,
 		}
 
 		resources = append(resources, resource)
@@ -1116,7 +1340,13 @@ func (c *Client) discoverRoute53Resources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Extract comment if present
+		var comment string
+		if zone.Config != nil && zone.Config.Comment != nil {
+			comment = *zone.Config.Comment
+		}
+
+		resource := &Route53Resource{
 			BaseResource: BaseResource{
 				Type:   "route53",
 				ID:     *zone.Id,
@@ -1124,11 +1354,9 @@ func (c *Client) discoverRoute53Resources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_route53_zone",
-			Attributes: map[string]interface{}{
-				"name": *zone.Name,
-				"comment": zone.Config.Comment,
-			},
+			ZoneID:  *zone.Id,
+			Name:    *zone.Name,
+			Comment: comment,
 		}
 
 		resources = append(resources, resource)
@@ -1142,24 +1370,31 @@ func (c *Client) discoverRoute53Resources() ([]Resource, error) {
 		}
 
 		for _, record := range recordsResult.ResourceRecordSets {
-			recordResource := &GenericResource{
-				BaseResource: BaseResource{
-					Type:   "route53",
-					ID:     fmt.Sprintf("%s-%s", *zone.Id, *record.Name),
-					Name:   *record.Name,
-					Region: c.region,
-					Tags:   make(map[string]string),
-				},
-				ResourceType: "aws_route53_record",
-				Attributes: map[string]interface{}{
-					"zone_id": *zone.Id,
-					"name":    *record.Name,
-					"type":    record.Type,
-					"ttl":     record.TTL,
-				},
+			// Extract records if present
+			var records []string
+			if len(record.ResourceRecords) > 0 {
+				for _, rr := range record.ResourceRecords {
+					if rr.Value != nil {
+						records = append(records, *rr.Value)
+					}
+				}
 			}
 
-			resources = append(resources, recordResource)
+			// Extract TTL if present
+			var ttl int64
+			if record.TTL != nil {
+				ttl = *record.TTL
+			}
+
+			recordResource := &Route53Record{
+				Name:    *record.Name,
+				Type:    string(record.Type),
+				TTL:     ttl,
+				Records: records,
+			}
+
+			// Add the record to the zone's records
+			resource.Records = append(resource.Records, recordResource)
 		}
 	}
 
@@ -1191,7 +1426,174 @@ func (c *Client) discoverCloudFrontResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Extract origins
+		var origins []*Origin
+		for _, origin := range distribution.Origins.Items {
+			// Skip if required fields are nil
+			if origin.DomainName == nil || origin.Id == nil {
+				continue
+			}
+			
+			originConfig := &Origin{
+				DomainName: *origin.DomainName,
+				OriginID:   *origin.Id,
+			}
+			
+			// Add origin path if present
+			if origin.OriginPath != nil {
+				originConfig.OriginPath = *origin.OriginPath
+			}
+			
+			// Add connection attempts if present
+			if origin.ConnectionAttempts != nil {
+				originConfig.ConnectionAttempts = *origin.ConnectionAttempts
+			}
+			
+			// Add connection timeout if present
+			if origin.ConnectionTimeout != nil {
+				originConfig.ConnectionTimeout = *origin.ConnectionTimeout
+			}
+			
+			// Add custom origin config if present
+			if origin.CustomOriginConfig != nil {
+				originConfig.CustomOriginConfig = &CustomOriginConfig{
+					HTTPPort:             *origin.CustomOriginConfig.HTTPPort,
+					HTTPSPort:            *origin.CustomOriginConfig.HTTPSPort,
+					OriginProtocolPolicy: string(origin.CustomOriginConfig.OriginProtocolPolicy),
+				}
+				
+				// Add SSL protocols if present
+				if len(origin.CustomOriginConfig.OriginSslProtocols.Items) > 0 {
+					for _, protocol := range origin.CustomOriginConfig.OriginSslProtocols.Items {
+						originConfig.CustomOriginConfig.OriginSSLProtocols = append(originConfig.CustomOriginConfig.OriginSSLProtocols, string(protocol))
+					}
+				}
+				
+				// Add read timeout if present
+				if origin.CustomOriginConfig.OriginReadTimeout != nil {
+					originConfig.CustomOriginConfig.OriginReadTimeout = *origin.CustomOriginConfig.OriginReadTimeout
+				}
+				
+				// Add keepalive timeout if present
+				if origin.CustomOriginConfig.OriginKeepaliveTimeout != nil {
+					originConfig.CustomOriginConfig.OriginKeepaliveTimeout = *origin.CustomOriginConfig.OriginKeepaliveTimeout
+				}
+			}
+			
+			// Add S3 origin config if present
+			if origin.S3OriginConfig != nil && origin.S3OriginConfig.OriginAccessIdentity != nil {
+				originConfig.S3OriginConfig = &S3OriginConfig{
+					OriginAccessIdentity: *origin.S3OriginConfig.OriginAccessIdentity,
+				}
+			}
+			
+			// Add custom headers if present
+			if origin.CustomHeaders != nil && len(origin.CustomHeaders.Items) > 0 {
+				for _, header := range origin.CustomHeaders.Items {
+					if header.HeaderName != nil && header.HeaderValue != nil {
+						originConfig.CustomHeaders = append(originConfig.CustomHeaders, &CustomHeader{
+							Name:  *header.HeaderName,
+							Value: *header.HeaderValue,
+						})
+					}
+				}
+			}
+			
+			// Add origin shield if present
+			if origin.OriginShield != nil && origin.OriginShield.Enabled != nil && origin.OriginShield.OriginShieldRegion != nil {
+				originConfig.OriginShield = &OriginShield{
+					Enabled:            *origin.OriginShield.Enabled,
+					OriginShieldRegion: *origin.OriginShield.OriginShieldRegion,
+				}
+			}
+			
+			origins = append(origins, originConfig)
+		}
+
+		// Extract default cache behavior
+		var defaultCacheBehavior *CacheBehavior
+		if distribution.DefaultCacheBehavior != nil {
+			// Skip if required fields are nil
+			if distribution.DefaultCacheBehavior.TargetOriginId == nil || distribution.DefaultCacheBehavior.Compress == nil {
+				continue
+			}
+			
+			defaultCacheBehavior = &CacheBehavior{
+				TargetOriginID:        *distribution.DefaultCacheBehavior.TargetOriginId,
+				ViewerProtocolPolicy:  string(distribution.DefaultCacheBehavior.ViewerProtocolPolicy),
+				Compress:              *distribution.DefaultCacheBehavior.Compress,
+			}
+			
+			// Add allowed methods
+			if distribution.DefaultCacheBehavior.AllowedMethods != nil && len(distribution.DefaultCacheBehavior.AllowedMethods.Items) > 0 {
+				for _, method := range distribution.DefaultCacheBehavior.AllowedMethods.Items {
+					defaultCacheBehavior.AllowedMethods = append(defaultCacheBehavior.AllowedMethods, string(method))
+				}
+			}
+			
+			// Note: CachedMethods not available in DistributionSummary
+			
+			// Add cache policy if present
+			if distribution.DefaultCacheBehavior.CachePolicyId != nil {
+				defaultCacheBehavior.CachePolicyID = *distribution.DefaultCacheBehavior.CachePolicyId
+			}
+			
+			// Add origin request policy if present
+			if distribution.DefaultCacheBehavior.OriginRequestPolicyId != nil {
+				defaultCacheBehavior.OriginRequestPolicyID = *distribution.DefaultCacheBehavior.OriginRequestPolicyId
+			}
+			
+			// Add response headers policy if present
+			if distribution.DefaultCacheBehavior.ResponseHeadersPolicyId != nil {
+				defaultCacheBehavior.ResponseHeadersPolicyID = *distribution.DefaultCacheBehavior.ResponseHeadersPolicyId
+			}
+			
+			// Add TTL settings if present
+			if distribution.DefaultCacheBehavior.DefaultTTL != nil {
+				defaultCacheBehavior.DefaultTTL = *distribution.DefaultCacheBehavior.DefaultTTL
+			}
+			if distribution.DefaultCacheBehavior.MaxTTL != nil {
+				defaultCacheBehavior.MaxTTL = *distribution.DefaultCacheBehavior.MaxTTL
+			}
+			if distribution.DefaultCacheBehavior.MinTTL != nil {
+				defaultCacheBehavior.MinTTL = *distribution.DefaultCacheBehavior.MinTTL
+			}
+		}
+
+		// Extract viewer certificate
+		var viewerCertificate *ViewerCertificate
+		if distribution.ViewerCertificate != nil {
+			// Skip if required fields are nil
+			if distribution.ViewerCertificate.CloudFrontDefaultCertificate == nil {
+				continue
+			}
+			
+			viewerCertificate = &ViewerCertificate{
+				CloudFrontDefaultCertificate: *distribution.ViewerCertificate.CloudFrontDefaultCertificate,
+				MinimumProtocolVersion:       string(distribution.ViewerCertificate.MinimumProtocolVersion),
+				SSLSupportMethod:             string(distribution.ViewerCertificate.SSLSupportMethod),
+			}
+			
+			// Add ACM certificate ARN if present
+			if distribution.ViewerCertificate.ACMCertificateArn != nil {
+				viewerCertificate.ACMCertificateARN = *distribution.ViewerCertificate.ACMCertificateArn
+			}
+		}
+
+		// Extract aliases
+		var aliases []string
+		if distribution.Aliases != nil && len(distribution.Aliases.Items) > 0 {
+			for _, alias := range distribution.Aliases.Items {
+				aliases = append(aliases, alias)
+			}
+		}
+
+		// Skip if required fields are nil
+		if distribution.Id == nil || distribution.DomainName == nil || distribution.Enabled == nil || distribution.IsIPV6Enabled == nil {
+			continue
+		}
+		
+		resource := &CloudFrontResource{
 			BaseResource: BaseResource{
 				Type:   "cloudfront",
 				ID:     *distribution.Id,
@@ -1199,14 +1601,21 @@ func (c *Client) discoverCloudFrontResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_cloudfront_distribution",
-			Attributes: map[string]interface{}{
-				"id":              *distribution.Id,
-				"domain_name":     *distribution.DomainName,
-				"enabled":         distribution.Enabled,
-				"price_class":     distribution.PriceClass,
-				"origin_domain_name": distribution.Origins.Items[0].DomainName,
-			},
+			Enabled:           *distribution.Enabled,
+			PriceClass:        string(distribution.PriceClass),
+			IsIPV6Enabled:     *distribution.IsIPV6Enabled,
+			HttpVersion:       string(distribution.HttpVersion),
+			Origins:           origins,
+			DefaultCacheBehavior: defaultCacheBehavior,
+			ViewerCertificate:    viewerCertificate,
+			Aliases:              aliases,
+		}
+
+		// Note: DefaultRootObject not available in DistributionSummary
+
+		// Add web ACL ID if present
+		if distribution.WebACLId != nil {
+			resource.WebACLID = *distribution.WebACLId
 		}
 
 		resources = append(resources, resource)
@@ -1239,7 +1648,7 @@ func (c *Client) discoverAPIGatewayResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		resource := &APIGatewayResource{
 			BaseResource: BaseResource{
 				Type:   "apigateway",
 				ID:     *api.ApiId,
@@ -1247,13 +1656,10 @@ func (c *Client) discoverAPIGatewayResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_apigatewayv2_api",
-			Attributes: map[string]interface{}{
-				"api_id":      *api.ApiId,
-				"name":        *api.Name,
-				"protocol_type": api.ProtocolType,
-				"version":     api.Version,
-			},
+			APIID:        *api.ApiId,
+			Name:         *api.Name,
+			ProtocolType: string(api.ProtocolType),
+			Version:      *api.Version,
 		}
 
 		resources = append(resources, resource)
@@ -1297,7 +1703,44 @@ func (c *Client) discoverElasticsearchResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Build cluster config
+		var clusterConfig *ElasticsearchClusterConfig
+		if domain.ElasticsearchClusterConfig != nil {
+			clusterConfig = &ElasticsearchClusterConfig{
+				InstanceType:         string(domain.ElasticsearchClusterConfig.InstanceType),
+				InstanceCount:        int32(aws.ToInt32(domain.ElasticsearchClusterConfig.InstanceCount)),
+				DedicatedMasterEnabled: aws.ToBool(domain.ElasticsearchClusterConfig.DedicatedMasterEnabled),
+				ZoneAwarenessEnabled: domain.ElasticsearchClusterConfig.ZoneAwarenessConfig != nil,
+			}
+		}
+
+		// Build EBS options
+		var ebsOptions *ElasticsearchEBSOptions
+		if domain.EBSOptions != nil {
+			ebsOptions = &ElasticsearchEBSOptions{
+				EBSEnabled: aws.ToBool(domain.EBSOptions.EBSEnabled),
+				VolumeType: string(domain.EBSOptions.VolumeType),
+				VolumeSize: int32(aws.ToInt32(domain.EBSOptions.VolumeSize)),
+			}
+		}
+
+		// Build encrypt at rest
+		var encryptAtRest *ElasticsearchEncryptAtRest
+		if domain.EncryptionAtRestOptions != nil {
+			encryptAtRest = &ElasticsearchEncryptAtRest{
+				Enabled: aws.ToBool(domain.EncryptionAtRestOptions.Enabled),
+			}
+		}
+
+		// Build node to node encryption
+		var nodeToNodeEncryption *ElasticsearchNodeToNodeEncryption
+		if domain.NodeToNodeEncryptionOptions != nil {
+			nodeToNodeEncryption = &ElasticsearchNodeToNodeEncryption{
+				Enabled: aws.ToBool(domain.NodeToNodeEncryptionOptions.Enabled),
+			}
+		}
+
+		resource := &ElasticsearchResource{
 			BaseResource: BaseResource{
 				Type:   "elasticsearch",
 				ID:     *domain.DomainName,
@@ -1305,14 +1748,12 @@ func (c *Client) discoverElasticsearchResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_elasticsearch_domain",
-			Attributes: map[string]interface{}{
-				"domain_name":           *domain.DomainName,
-				"elasticsearch_version": domain.ElasticsearchVersion,
-				"instance_type":         domain.ElasticsearchClusterConfig.InstanceType,
-				"instance_count":        domain.ElasticsearchClusterConfig.InstanceCount,
-				"vpc_options":           domain.VPCOptions != nil,
-			},
+			DomainName:           *domain.DomainName,
+			ElasticsearchVersion: aws.ToString(domain.ElasticsearchVersion),
+			ClusterConfig:        clusterConfig,
+			EBSOptions:           ebsOptions,
+			EncryptAtRest:        encryptAtRest,
+			NodeToNodeEncryption: nodeToNodeEncryption,
 		}
 
 		resources = append(resources, resource)
@@ -1346,7 +1787,26 @@ func (c *Client) discoverECRResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Build image scanning configuration if present
+		var imageScanConfig *ImageScanningConfiguration
+		if repo.ImageScanningConfiguration != nil {
+			imageScanConfig = &ImageScanningConfiguration{
+				ScanOnPush: repo.ImageScanningConfiguration.ScanOnPush,
+			}
+		}
+
+		// Build encryption configuration if present
+		var encryptionConfig *EncryptionConfiguration
+		if repo.EncryptionConfiguration != nil {
+			encryptionConfig = &EncryptionConfiguration{
+				EncryptionType: string(repo.EncryptionConfiguration.EncryptionType),
+				KMSKey:         aws.ToString(repo.EncryptionConfiguration.KmsKey),
+			}
+		}
+
+		// Note: Lifecycle policy would need additional API call to retrieve
+
+		resource := &ECRResource{
 			BaseResource: BaseResource{
 				Type:   "ecr",
 				ID:     *repo.RepositoryName,
@@ -1354,12 +1814,11 @@ func (c *Client) discoverECRResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_ecr_repository",
-			Attributes: map[string]interface{}{
-				"name":                 *repo.RepositoryName,
-				"image_tag_mutability": repo.ImageTagMutability,
-				"scan_on_push":         repo.ImageScanningConfiguration.ScanOnPush,
-			},
+			RepositoryURI:              aws.ToString(repo.RepositoryUri),
+			ImageTagMutability:         string(repo.ImageTagMutability),
+			ScanOnPush:                 repo.ImageScanningConfiguration != nil && repo.ImageScanningConfiguration.ScanOnPush,
+			ImageScanningConfiguration: imageScanConfig,
+			EncryptionConfiguration:    encryptionConfig,
 		}
 
 		resources = append(resources, resource)
@@ -1393,7 +1852,7 @@ func (c *Client) discoverNeptuneResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &NeptuneResource{
 			BaseResource: BaseResource{
 				Type:   "neptune",
 				ID:     *cluster.DBClusterIdentifier,
@@ -1401,15 +1860,20 @@ func (c *Client) discoverNeptuneResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_neptune_cluster",
-			Attributes: map[string]interface{}{
-				"cluster_identifier":     *cluster.DBClusterIdentifier,
-				"engine":                 cluster.Engine,
-				"engine_version":         cluster.EngineVersion,
-				"availability_zones":     cluster.AvailabilityZones,
-				"backup_retention_period": cluster.BackupRetentionPeriod,
-				"storage_encrypted":      cluster.StorageEncrypted,
-			},
+			ClusterIdentifier:     *cluster.DBClusterIdentifier,
+			Engine:               aws.ToString(cluster.Engine),
+			EngineVersion:        aws.ToString(cluster.EngineVersion),
+			AvailabilityZones:    cluster.AvailabilityZones,
+			BackupRetentionPeriod: int32(aws.ToInt32(cluster.BackupRetentionPeriod)),
+			PreferredBackupWindow: aws.ToString(cluster.PreferredBackupWindow),
+			PreferredMaintenanceWindow: aws.ToString(cluster.PreferredMaintenanceWindow),
+			Port:                 int32(aws.ToInt32(cluster.Port)),
+			DBSubnetGroupName:    aws.ToString(cluster.DBSubnetGroup),
+			VpcSecurityGroupIds:  extractSecurityGroupIDs(cluster.VpcSecurityGroups),
+			StorageEncrypted:     aws.ToBool(cluster.StorageEncrypted),
+			KMSKeyARN:            aws.ToString(cluster.KmsKeyId),
+			SkipFinalSnapshot:    aws.ToBool(cluster.DeletionProtection),
+			DeletionProtection:   aws.ToBool(cluster.DeletionProtection),
 		}
 
 		resources = append(resources, resource)
@@ -1443,7 +1907,7 @@ func (c *Client) discoverDocDBResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &DocDBResource{
 			BaseResource: BaseResource{
 				Type:   "docdb",
 				ID:     *cluster.DBClusterIdentifier,
@@ -1451,15 +1915,20 @@ func (c *Client) discoverDocDBResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_docdb_cluster",
-			Attributes: map[string]interface{}{
-				"cluster_identifier":     *cluster.DBClusterIdentifier,
-				"engine":                 cluster.Engine,
-				"engine_version":         cluster.EngineVersion,
-				"availability_zones":     cluster.AvailabilityZones,
-				"backup_retention_period": cluster.BackupRetentionPeriod,
-				"storage_encrypted":      cluster.StorageEncrypted,
-			},
+			ClusterIdentifier:     *cluster.DBClusterIdentifier,
+			Engine:               aws.ToString(cluster.Engine),
+			EngineVersion:        aws.ToString(cluster.EngineVersion),
+			AvailabilityZones:    cluster.AvailabilityZones,
+			BackupRetentionPeriod: int32(aws.ToInt32(cluster.BackupRetentionPeriod)),
+			PreferredBackupWindow: aws.ToString(cluster.PreferredBackupWindow),
+			PreferredMaintenanceWindow: aws.ToString(cluster.PreferredMaintenanceWindow),
+			Port:                 int32(aws.ToInt32(cluster.Port)),
+			DBSubnetGroupName:    aws.ToString(cluster.DBSubnetGroup),
+			VpcSecurityGroupIds:  extractSecurityGroupIDs(cluster.VpcSecurityGroups),
+			StorageEncrypted:     aws.ToBool(cluster.StorageEncrypted),
+			KMSKeyARN:            aws.ToString(cluster.KmsKeyId),
+			SkipFinalSnapshot:    aws.ToBool(cluster.DeletionProtection),
+			DeletionProtection:   aws.ToBool(cluster.DeletionProtection),
 		}
 
 		resources = append(resources, resource)
@@ -1492,7 +1961,7 @@ func (c *Client) discoverElasticBeanstalkResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &ElasticBeanstalkResource{
 			BaseResource: BaseResource{
 				Type:   "elasticbeanstalk",
 				ID:     *app.ApplicationName,
@@ -1500,11 +1969,9 @@ func (c *Client) discoverElasticBeanstalkResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_elastic_beanstalk_application",
-			Attributes: map[string]interface{}{
-				"name":        *app.ApplicationName,
-				"description": app.Description,
-			},
+			ApplicationName: *app.ApplicationName,
+			EnvironmentName: *app.ApplicationName, // This will be updated when we get environment details
+			Description:     aws.ToString(app.Description),
 		}
 
 		resources = append(resources, resource)
@@ -1539,7 +2006,36 @@ func (c *Client) discoverCodeBuildResources() ([]Resource, error) {
 		// CodeBuild doesn't have a direct ListTagsForResource method, skip tags for now
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		// Build source configuration
+		source := &CodeBuildSource{
+			Type:            string(project.Source.Type),
+			Location:        aws.ToString(project.Source.Location),
+			GitCloneDepth:   int32(aws.ToInt32(project.Source.GitCloneDepth)),
+			Buildspec:       aws.ToString(project.Source.Buildspec),
+			ReportBuildStatus: aws.ToBool(project.Source.ReportBuildStatus),
+		}
+
+		// Build artifacts configuration
+		artifacts := &CodeBuildArtifacts{
+			Type:                string(project.Artifacts.Type),
+			Location:            aws.ToString(project.Artifacts.Location),
+			Path:                aws.ToString(project.Artifacts.Path),
+			NamespaceType:       string(project.Artifacts.NamespaceType),
+			Name:                aws.ToString(project.Artifacts.Name),
+			Packaging:           string(project.Artifacts.Packaging),
+			OverrideArtifactName: aws.ToBool(project.Artifacts.OverrideArtifactName),
+			EncryptionDisabled:  aws.ToBool(project.Artifacts.EncryptionDisabled),
+		}
+
+		// Build environment configuration
+		environment := &CodeBuildEnvironment{
+			Type:             string(project.Environment.Type),
+			Image:            aws.ToString(project.Environment.Image),
+			ComputeType:      string(project.Environment.ComputeType),
+			PrivilegedMode:   aws.ToBool(project.Environment.PrivilegedMode),
+		}
+
+		resource := &CodeBuildResource{
 			BaseResource: BaseResource{
 				Type:   "codebuild",
 				ID:     *project.Name,
@@ -1547,14 +2043,13 @@ func (c *Client) discoverCodeBuildResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_codebuild_project",
-			Attributes: map[string]interface{}{
-				"name":           *project.Name,
-				"service_role":   project.ServiceRole,
-				"build_timeout":  project.TimeoutInMinutes,
-				"environment":    project.Environment.Type,
-				"source_type":    project.Source.Type,
-			},
+			ProjectName:  *project.Name,
+			Description:  aws.ToString(project.Description),
+			BuildTimeout: int32(aws.ToInt32(project.TimeoutInMinutes)),
+			ServiceRole:  aws.ToString(project.ServiceRole),
+			Source:       source,
+			Artifacts:    artifacts,
+			Environment:  environment,
 		}
 
 		resources = append(resources, resource)
@@ -1586,7 +2081,7 @@ func (c *Client) discoverCodeDeployResources() ([]Resource, error) {
 		// CodeDeploy doesn't have ApplicationArn field, skip tags for now
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		resource := &CodeDeployResource{
 			BaseResource: BaseResource{
 				Type:   "codedeploy",
 				ID:     *app.ApplicationName,
@@ -1594,11 +2089,8 @@ func (c *Client) discoverCodeDeployResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_codedeploy_app",
-			Attributes: map[string]interface{}{
-				"name":             *app.ApplicationName,
-				"compute_platform": app.ComputePlatform,
-			},
+			ApplicationName: *app.ApplicationName,
+			ComputePlatform: string(app.ComputePlatform),
 		}
 
 		resources = append(resources, resource)
@@ -1633,7 +2125,19 @@ func (c *Client) discoverSSMResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Extract description if present
+		var description string
+		if param.Description != nil {
+			description = *param.Description
+		}
+
+		// Extract tier if present
+		var tier string
+		if param.Tier != "" {
+			tier = string(param.Tier)
+		}
+
+		resource := &SSMParameterResource{
 			BaseResource: BaseResource{
 				Type:   "ssm",
 				ID:     *param.Name,
@@ -1641,13 +2145,10 @@ func (c *Client) discoverSSMResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_ssm_parameter",
-			Attributes: map[string]interface{}{
-				"name":        *param.Name,
-				"type":        param.Type,
-				"description": param.Description,
-				"tier":        param.Tier,
-			},
+			Name:        *param.Name,
+			Type:        string(param.Type),
+			Description: description,
+			Tier:        tier,
 		}
 
 		resources = append(resources, resource)
@@ -1669,7 +2170,19 @@ func (c *Client) discoverSecretsManagerResources() ([]Resource, error) {
 		// Secrets Manager doesn't have a direct ListTagsForResource method, skip tags for now
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		// Extract description if present
+		var description string
+		if secret.Description != nil {
+			description = *secret.Description
+		}
+
+		// Extract KMS key ID if present
+		var kmsKeyID string
+		if secret.KmsKeyId != nil {
+			kmsKeyID = *secret.KmsKeyId
+		}
+
+		resource := &SecretsManagerResource{
 			BaseResource: BaseResource{
 				Type:   "secretsmanager",
 				ID:     *secret.Name,
@@ -1677,12 +2190,9 @@ func (c *Client) discoverSecretsManagerResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_secretsmanager_secret",
-			Attributes: map[string]interface{}{
-				"name":        *secret.Name,
-				"description": secret.Description,
-				"kms_key_id":  secret.KmsKeyId,
-			},
+			Name:        *secret.Name,
+			Description: description,
+			KMSKeyID:    kmsKeyID,
 		}
 
 		resources = append(resources, resource)
@@ -1726,22 +2236,26 @@ func (c *Client) discoverKMSResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Extract description if present
+		var description string
+		if keyMetadata.Description != nil {
+			description = *keyMetadata.Description
+		}
+
+		resource := &KMSResource{
 			BaseResource: BaseResource{
 				Type:   "kms",
 				ID:     *keyMetadata.KeyId,
-				Name:   *keyMetadata.Description,
+				Name:   description,
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_kms_key",
-			Attributes: map[string]interface{}{
-				"key_id":         *keyMetadata.KeyId,
-				"description":    keyMetadata.Description,
-				"key_usage":      keyMetadata.KeyUsage,
-				"origin":         keyMetadata.Origin,
-				"customer_master_key_spec": keyMetadata.CustomerMasterKeySpec,
-			},
+			KeyID:                *keyMetadata.KeyId,
+			Description:          description,
+			KeyUsage:             string(keyMetadata.KeyUsage),
+			CustomerMasterKeySpec: string(keyMetadata.CustomerMasterKeySpec),
+			DeletionWindowInDays: 7, // Default value
+			EnableKeyRotation:    false, // Default value
 		}
 
 		resources = append(resources, resource)
@@ -1783,7 +2297,19 @@ func (c *Client) discoverCodeCommitResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		// Extract description if present
+		var description string
+		if repository.RepositoryDescription != nil {
+			description = *repository.RepositoryDescription
+		}
+
+		// Extract default branch if present
+		var defaultBranch string
+		if repository.DefaultBranch != nil {
+			defaultBranch = *repository.DefaultBranch
+		}
+
+		resource := &CodeCommitResource{
 			BaseResource: BaseResource{
 				Type:   "codecommit",
 				ID:     *repository.RepositoryName,
@@ -1791,12 +2317,9 @@ func (c *Client) discoverCodeCommitResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_codecommit_repository",
-			Attributes: map[string]interface{}{
-				"repository_name": *repository.RepositoryName,
-				"description":     repository.RepositoryDescription,
-				"default_branch":  repository.DefaultBranch,
-			},
+			RepositoryName: *repository.RepositoryName,
+			Description:    description,
+			DefaultBranch:  defaultBranch,
 		}
 
 		resources = append(resources, resource)
@@ -1828,7 +2351,7 @@ func (c *Client) discoverCodePipelineResources() ([]Resource, error) {
 		// Get tags - skip for now as ARN is not directly available
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		resource := &CodePipelineResource{
 			BaseResource: BaseResource{
 				Type:   "codepipeline",
 				ID:     *pipeline.Name,
@@ -1836,11 +2359,8 @@ func (c *Client) discoverCodePipelineResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_codepipeline",
-			Attributes: map[string]interface{}{
-				"name": *pipeline.Name,
-				"role_arn": pipelineInfo.RoleArn,
-			},
+			PipelineName: *pipeline.Name,
+			RoleARN:      *pipelineInfo.RoleArn,
 		}
 
 		resources = append(resources, resource)
@@ -1881,7 +2401,7 @@ func (c *Client) discoverCloudFormationResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &CloudFormationResource{
 			BaseResource: BaseResource{
 				Type:   "cloudformation",
 				ID:     *stack.StackName,
@@ -1889,11 +2409,7 @@ func (c *Client) discoverCloudFormationResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_cloudformation_stack",
-			Attributes: map[string]interface{}{
-				"name": *stack.StackName,
-				"capabilities": stackInfo.Capabilities,
-			},
+			StackName: *stack.StackName,
 		}
 
 		resources = append(resources, resource)
@@ -1912,7 +2428,32 @@ func (c *Client) discoverConfigResources() ([]Resource, error) {
 	}
 
 	for _, recorder := range recordersResult.ConfigurationRecorders {
-		resource := &GenericResource{
+		// Build recording group if present
+		var recordingGroup *ConfigRecordingGroup
+		if recorder.RecordingGroup != nil {
+			// Convert ResourceType slice to string slice
+			var resourceTypes []string
+			for _, rt := range recorder.RecordingGroup.ResourceTypes {
+				resourceTypes = append(resourceTypes, string(rt))
+			}
+			
+			recordingGroup = &ConfigRecordingGroup{
+				AllSupported:           recorder.RecordingGroup.AllSupported,
+				IncludeGlobalResources: recorder.RecordingGroup.IncludeGlobalResourceTypes,
+				ResourceTypes:          resourceTypes,
+			}
+		}
+
+		// Build recording mode if present
+		var recordingMode *ConfigRecordingMode
+		if recorder.RecordingMode != nil {
+			recordingMode = &ConfigRecordingMode{
+				RecordingFrequency: string(recorder.RecordingMode.RecordingFrequency),
+				// MaximumExecutionFrequency is not available in the SDK response
+			}
+		}
+
+		resource := &ConfigResource{
 			BaseResource: BaseResource{
 				Type:   "config",
 				ID:     *recorder.Name,
@@ -1920,11 +2461,10 @@ func (c *Client) discoverConfigResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   make(map[string]string),
 			},
-			ResourceType: "aws_config_configuration_recorder",
-			Attributes: map[string]interface{}{
-				"name": *recorder.Name,
-				"role_arn": recorder.RoleARN,
-			},
+			RecorderName:  *recorder.Name,
+			RoleARN:       aws.ToString(recorder.RoleARN),
+			RecordingGroup: recordingGroup,
+			RecordingMode:  recordingMode,
 		}
 
 		resources = append(resources, resource)
@@ -1968,7 +2508,15 @@ func (c *Client) discoverKinesisResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Build stream mode details if present
+		var streamModeDetails *KinesisStreamModeDetails
+		if stream.StreamModeDetails != nil {
+			streamModeDetails = &KinesisStreamModeDetails{
+				StreamMode: string(stream.StreamModeDetails.StreamMode),
+			}
+		}
+
+		resource := &KinesisResource{
 			BaseResource: BaseResource{
 				Type:   "kinesis",
 				ID:     streamName,
@@ -1976,13 +2524,13 @@ func (c *Client) discoverKinesisResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_kinesis_stream",
-			Attributes: map[string]interface{}{
-				"name":             streamName,
-				"shard_count":      stream.Shards,
-				"retention_period": stream.RetentionPeriodHours,
-				"stream_arn":       stream.StreamARN,
-			},
+			StreamName:           streamName,
+			ShardCount:           int32(len(stream.Shards)),
+			RetentionPeriodHours: int32(aws.ToInt32(stream.RetentionPeriodHours)),
+			StreamARN:            aws.ToString(stream.StreamARN),
+			EncryptionType:       string(stream.EncryptionType),
+			KMSKeyID:            aws.ToString(stream.KeyId),
+			StreamModeDetails:    streamModeDetails,
 		}
 
 		resources = append(resources, resource)
@@ -2016,7 +2564,7 @@ func (c *Client) discoverFSxResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &FSxResource{
 			BaseResource: BaseResource{
 				Type:   "fsx",
 				ID:     *filesystem.FileSystemId,
@@ -2024,13 +2572,12 @@ func (c *Client) discoverFSxResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_fsx_windows_file_system",
-			Attributes: map[string]interface{}{
-				"file_system_id": *filesystem.FileSystemId,
-				"file_system_type": filesystem.FileSystemType,
-				"storage_capacity": filesystem.StorageCapacity,
-				"subnet_ids": filesystem.SubnetIds,
-			},
+			FileSystemID:         *filesystem.FileSystemId,
+			FileSystemType:       string(filesystem.FileSystemType),
+			StorageCapacity:      int32(aws.ToInt32(filesystem.StorageCapacity)),
+			SubnetIDs:            filesystem.SubnetIds,
+			// SecurityGroupIDs, KMSKeyID, StorageType, DeploymentType, PreferredSubnetID, RouteTableIDs
+			// are not available in the basic FileSystem type - would need additional API calls
 		}
 
 		resources = append(resources, resource)
@@ -2041,46 +2588,8 @@ func (c *Client) discoverFSxResources() ([]Resource, error) {
 
 // discoverGuardDutyResources discovers GuardDuty detector resources
 func (c *Client) discoverGuardDutyResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.guarddutyClient.ListDetectors(context.TODO(), &guardduty.ListDetectorsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list GuardDuty detectors: %w", err)
-	}
-
-	for _, detectorId := range result.DetectorIds {
-		// Get detector details
-		detectorDetails, err := c.guarddutyClient.GetDetector(context.TODO(), &guardduty.GetDetectorInput{
-			DetectorId: &detectorId,
-		})
-		if err != nil {
-			continue
-		}
-
-		detector := detectorDetails
-
-		// Get tags - skip for now as ARN is not directly available
-		tagMap := make(map[string]string)
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "guardduty",
-				ID:     detectorId,
-				Name:   detectorId,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_guardduty_detector",
-			Attributes: map[string]interface{}{
-				"detector_id": detectorId,
-				"status":      detector.Status,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement GuardDuty resource discovery
+	return []Resource{}, nil
 }
 // discoverBackupResources discovers AWS Backup vault resources
 func (c *Client) discoverBackupResources() ([]Resource, error) {
@@ -2105,7 +2614,7 @@ func (c *Client) discoverBackupResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		resource := &BackupResource{
 			BaseResource: BaseResource{
 				Type:   "backup",
 				ID:     *vault.BackupVaultName,
@@ -2113,10 +2622,10 @@ func (c *Client) discoverBackupResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_backup_vault",
-			Attributes: map[string]interface{}{
-				"name": *vault.BackupVaultName,
-			},
+			BackupVaultName: *vault.BackupVaultName,
+			BackupVaultARN:  aws.ToString(vault.BackupVaultArn),
+			KMSKeyARN:       aws.ToString(vault.EncryptionKeyArn),
+			ForceDestroy:    false, // Default value, would need additional API call to determine
 		}
 
 		resources = append(resources, resource)
@@ -2148,7 +2657,7 @@ func (c *Client) discoverGlacierResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		resource := &GlacierResource{
 			BaseResource: BaseResource{
 				Type:   "glacier",
 				ID:     *vault.VaultName,
@@ -2156,10 +2665,8 @@ func (c *Client) discoverGlacierResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_glacier_vault",
-			Attributes: map[string]interface{}{
-				"name": *vault.VaultName,
-			},
+			VaultName: *vault.VaultName,
+			VaultARN:  aws.ToString(vault.VaultARN),
 		}
 
 		resources = append(resources, resource)
@@ -2192,7 +2699,7 @@ func (c *Client) discoverGlueResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		resource := &GlueResource{
 			BaseResource: BaseResource{
 				Type:   "glue",
 				ID:     *db.Name,
@@ -2200,11 +2707,10 @@ func (c *Client) discoverGlueResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_glue_catalog_database",
-			Attributes: map[string]interface{}{
-				"name":        *db.Name,
-				"description": db.Description,
-			},
+			DatabaseName: *db.Name,
+			Description:  aws.ToString(db.Description),
+			LocationURI:  aws.ToString(db.LocationUri),
+			Parameters:   db.Parameters,
 		}
 
 		resources = append(resources, resource)
@@ -2236,7 +2742,51 @@ func (c *Client) discoverAthenaResources() ([]Resource, error) {
 		// Get tags - skip for now as ARN is not directly available
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		// Build configuration if present
+		var configuration *AthenaWorkgroupConfiguration
+		if workgroupInfo.Configuration != nil {
+			config := workgroupInfo.Configuration
+			
+			// Build engine version if present
+			var engineVersion *AthenaEngineVersion
+			if config.EngineVersion != nil {
+				engineVersion = &AthenaEngineVersion{
+					SelectedEngineVersion: aws.ToString(config.EngineVersion.SelectedEngineVersion),
+					EffectiveEngineVersion: aws.ToString(config.EngineVersion.EffectiveEngineVersion),
+				}
+			}
+
+			// Build result configuration if present
+			var resultConfig *AthenaResultConfiguration
+			if config.ResultConfiguration != nil {
+				result := config.ResultConfiguration
+				
+				// Build encryption configuration if present
+				var encryptionConfig *AthenaEncryptionConfiguration
+				if result.EncryptionConfiguration != nil {
+					encryptionConfig = &AthenaEncryptionConfiguration{
+						EncryptionOption: string(result.EncryptionConfiguration.EncryptionOption),
+						KMSKey:           aws.ToString(result.EncryptionConfiguration.KmsKey),
+					}
+				}
+
+				resultConfig = &AthenaResultConfiguration{
+					OutputLocation:          aws.ToString(result.OutputLocation),
+					EncryptionConfiguration: encryptionConfig,
+				}
+			}
+
+			configuration = &AthenaWorkgroupConfiguration{
+				EnforceWorkgroupConfiguration:   aws.ToBool(config.EnforceWorkGroupConfiguration),
+				PublishCloudwatchMetricsEnabled: aws.ToBool(config.PublishCloudWatchMetricsEnabled),
+				BytesScannedCutoffPerQuery:     aws.ToInt64(config.BytesScannedCutoffPerQuery),
+				RequesterPaysEnabled:           aws.ToBool(config.RequesterPaysEnabled),
+				EngineVersion:                  engineVersion,
+				ResultConfiguration:            resultConfig,
+			}
+		}
+
+		resource := &AthenaResource{
 			BaseResource: BaseResource{
 				Type:   "athena",
 				ID:     *workgroup.Name,
@@ -2244,12 +2794,10 @@ func (c *Client) discoverAthenaResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_athena_workgroup",
-			Attributes: map[string]interface{}{
-				"name":        *workgroup.Name,
-				"description": workgroupInfo.Description,
-				"state":       workgroupInfo.State,
-			},
+			WorkgroupName: *workgroup.Name,
+			Description:   aws.ToString(workgroupInfo.Description),
+			State:         string(workgroupInfo.State),
+			Configuration: configuration,
 		}
 
 		resources = append(resources, resource)
@@ -2257,46 +2805,35 @@ func (c *Client) discoverAthenaResources() ([]Resource, error) {
 
 	return resources, nil
 }
-// discoverQuickSightResources discovers QuickSight dashboard resources
+// discoverQuickSightResources discovers QuickSight user resources
 func (c *Client) discoverQuickSightResources() ([]Resource, error) {
 	var resources []Resource
 
-	result, err := c.quicksightClient.ListDashboards(context.TODO(), &quicksight.ListDashboardsInput{
+	result, err := c.quicksightClient.ListUsers(context.TODO(), &quicksight.ListUsersInput{
 		AwsAccountId: aws.String("123456789012"), // This would need to be dynamic
+		Namespace:    aws.String("default"),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list QuickSight dashboards: %w", err)
+		return nil, fmt.Errorf("failed to list QuickSight users: %w", err)
 	}
 
-	for _, dashboard := range result.DashboardSummaryList {
-		// Get tags
-		tags, err := c.quicksightClient.ListTagsForResource(context.TODO(), &quicksight.ListTagsForResourceInput{
-			ResourceArn: dashboard.Arn,
-		})
-		if err != nil {
-			continue
-		}
-
+	for _, user := range result.UserList {
+		// Get tags - skip for now as method is not available
 		tagMap := make(map[string]string)
-		for _, tag := range tags.Tags {
-			if tag.Key != nil && tag.Value != nil {
-				tagMap[*tag.Key] = *tag.Value
-			}
-		}
 
-		resource := &GenericResource{
+		resource := &QuickSightResource{
 			BaseResource: BaseResource{
 				Type:   "quicksight",
-				ID:     *dashboard.DashboardId,
-				Name:   *dashboard.Name,
+				ID:     *user.UserName,
+				Name:   *user.UserName,
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_quicksight_dashboard",
-			Attributes: map[string]interface{}{
-				"dashboard_id": *dashboard.DashboardId,
-				"name":         *dashboard.Name,
-			},
+			UserName:    *user.UserName,
+			Email:       aws.ToString(user.Email),
+			IdentityType: string(user.IdentityType),
+			UserRole:    string(user.Role),
+			Namespace:   "default", // Default namespace
 		}
 
 		resources = append(resources, resource)
@@ -2304,33 +2841,38 @@ func (c *Client) discoverQuickSightResources() ([]Resource, error) {
 
 	return resources, nil
 }
-// discoverWorkSpacesResources discovers WorkSpaces directory resources
+// discoverWorkSpacesResources discovers WorkSpaces workspace resources
 func (c *Client) discoverWorkSpacesResources() ([]Resource, error) {
 	var resources []Resource
 
-	result, err := c.workspacesClient.DescribeWorkspaceDirectories(context.TODO(), &workspaces.DescribeWorkspaceDirectoriesInput{})
+	result, err := c.workspacesClient.DescribeWorkspaces(context.TODO(), &workspaces.DescribeWorkspacesInput{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list WorkSpaces directories: %w", err)
+		return nil, fmt.Errorf("failed to list WorkSpaces workspaces: %w", err)
 	}
 
-	for _, directory := range result.Directories {
+	for _, workspace := range result.Workspaces {
 		// Get tags - skip for now as method is not available
 		tagMap := make(map[string]string)
 
-		resource := &GenericResource{
+		resource := &WorkSpacesResource{
 			BaseResource: BaseResource{
 				Type:   "workspaces",
-				ID:     *directory.DirectoryId,
-				Name:   *directory.DirectoryName,
+				ID:     *workspace.WorkspaceId,
+				Name:   *workspace.WorkspaceId,
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_workspaces_directory",
-			Attributes: map[string]interface{}{
-				"directory_id":   *directory.DirectoryId,
-				"directory_name": *directory.DirectoryName,
-				"directory_type": directory.DirectoryType,
-			},
+			WorkspaceID:    *workspace.WorkspaceId,
+			DirectoryID:    aws.ToString(workspace.DirectoryId),
+			BundleID:       aws.ToString(workspace.BundleId),
+			UserName:       aws.ToString(workspace.UserName),
+			RootVolumeSizeGib: int32(aws.ToInt32(workspace.WorkspaceProperties.RootVolumeSizeGib)),
+			UserVolumeSizeGib: int32(aws.ToInt32(workspace.WorkspaceProperties.UserVolumeSizeGib)),
+			ComputeTypeName: string(workspace.WorkspaceProperties.ComputeTypeName),
+			UserVolumeEncryptionEnabled: false, // Not available in basic response
+			RootVolumeEncryptionEnabled: false, // Not available in basic response
+			RunningMode: string(workspace.WorkspaceProperties.RunningMode),
+			AutoStopTimeoutInMinutes: 0, // Not available in basic response
 		}
 
 		resources = append(resources, resource)
@@ -2376,7 +2918,7 @@ func (c *Client) discoverStorageGatewayResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &StorageGatewayResource{
 			BaseResource: BaseResource{
 				Type:   "storagegateway",
 				ID:     *gateway.GatewayARN,
@@ -2384,12 +2926,15 @@ func (c *Client) discoverStorageGatewayResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_storagegateway_gateway",
-			Attributes: map[string]interface{}{
-				"gateway_arn":  *gateway.GatewayARN,
-				"gateway_name": *gateway.GatewayName,
-				"gateway_type": gateway.GatewayType,
-			},
+			GatewayName: *gateway.GatewayName,
+			GatewayARN:  *gateway.GatewayARN,
+			GatewayType: aws.ToString(gateway.GatewayType),
+			GatewayTimezone: aws.ToString(gatewayDetails.GatewayTimezone),
+			GatewayRegion: c.region, // Use client region
+			GatewayVPCEndpoint: aws.ToString(gatewayDetails.VPCEndpoint),
+			CloudWatchLogGroupARN: aws.ToString(gatewayDetails.CloudWatchLogGroupARN),
+			AverageDownloadRateLimitInBitsPerSec: 0, // Not available in basic response
+			AverageUploadRateLimitInBitsPerSec: 0, // Not available in basic response
 		}
 
 		resources = append(resources, resource)
@@ -2423,7 +2968,11 @@ func (c *Client) discoverTransferResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		// Build workflow details if present
+		var workflowDetails *TransferWorkflowDetails
+		// Note: Workflow details would need additional API calls
+
+		resource := &TransferResource{
 			BaseResource: BaseResource{
 				Type:   "transfer",
 				ID:     *server.ServerId,
@@ -2431,12 +2980,14 @@ func (c *Client) discoverTransferResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_transfer_server",
-			Attributes: map[string]interface{}{
-				"server_id": *server.ServerId,
-				"identity_provider_type": server.IdentityProviderType,
-				"endpoint_type": server.EndpointType,
-			},
+			ServerID:            *server.ServerId,
+			IdentityProviderType: string(server.IdentityProviderType),
+			LoggingRole:         aws.ToString(server.LoggingRole),
+			Protocols:           []string{}, // Not available in basic response
+			EndpointType:        string(server.EndpointType),
+			SecurityPolicyName:  "", // Not available in basic response
+			WorkflowDetails:     workflowDetails,
+			StructuredLogDestinations: []string{}, // Not available in basic response
 		}
 
 		resources = append(resources, resource)
@@ -2478,7 +3029,36 @@ func (c *Client) discoverMQResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		// Build maintenance window if present
+		var maintenanceWindow *MQMaintenanceWindow
+		if brokerInfo.MaintenanceWindowStartTime != nil {
+			maintenanceWindow = &MQMaintenanceWindow{
+				DayOfWeek: string(brokerInfo.MaintenanceWindowStartTime.DayOfWeek),
+				TimeOfDay: aws.ToString(brokerInfo.MaintenanceWindowStartTime.TimeOfDay),
+				TimeZone:  aws.ToString(brokerInfo.MaintenanceWindowStartTime.TimeZone),
+			}
+		}
+
+		// Build logs configuration if present
+		var logs *MQLogs
+		if brokerInfo.Logs != nil {
+			logs = &MQLogs{
+				Audit:   aws.ToBool(brokerInfo.Logs.Audit),
+				General: aws.ToBool(brokerInfo.Logs.General),
+			}
+		}
+
+		// Build configuration if present
+		var configuration *MQConfiguration
+		if brokerInfo.Configurations != nil && brokerInfo.Configurations.Current != nil {
+			config := brokerInfo.Configurations.Current
+			configuration = &MQConfiguration{
+				ID:       aws.ToString(config.Id),
+				Revision: int32(aws.ToInt32(config.Revision)),
+			}
+		}
+
+		resource := &MQResource{
 			BaseResource: BaseResource{
 				Type:   "mq",
 				ID:     *broker.BrokerId,
@@ -2486,12 +3066,17 @@ func (c *Client) discoverMQResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_mq_broker",
-			Attributes: map[string]interface{}{
-				"broker_id":   *broker.BrokerId,
-				"broker_name": *broker.BrokerName,
-				"engine_type": broker.EngineType,
-			},
+			BrokerName:       *broker.BrokerName,
+			BrokerID:         *broker.BrokerId,
+			EngineType:       string(broker.EngineType),
+			EngineVersion:    aws.ToString(brokerInfo.EngineVersion),
+			HostInstanceType: aws.ToString(brokerInfo.HostInstanceType),
+			DeploymentMode:   string(brokerInfo.DeploymentMode),
+			SecurityGroups:   brokerInfo.SecurityGroups,
+			SubnetIDs:        brokerInfo.SubnetIds,
+			MaintenanceWindowStartTime: maintenanceWindow,
+			Logs:                      logs,
+			Configuration:              configuration,
 		}
 
 		resources = append(resources, resource)
@@ -2534,7 +3119,7 @@ func (c *Client) discoverFirehoseResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &FirehoseResource{
 			BaseResource: BaseResource{
 				Type:   "firehose",
 				ID:     streamName,
@@ -2542,12 +3127,9 @@ func (c *Client) discoverFirehoseResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_kinesis_firehose_delivery_stream",
-			Attributes: map[string]interface{}{
-				"name": streamName,
-				"delivery_stream_type": stream.DeliveryStreamType,
-				"delivery_stream_status": stream.DeliveryStreamStatus,
-			},
+			Name:                 streamName,
+			DeliveryStreamType:   string(stream.DeliveryStreamType),
+			DeliveryStreamStatus: string(stream.DeliveryStreamStatus),
 		}
 
 		resources = append(resources, resource)
@@ -2580,7 +3162,7 @@ func (c *Client) discoverMediaStoreResources() ([]Resource, error) {
 			}
 		}
 
-		resource := &GenericResource{
+		resource := &MediaStoreResource{
 			BaseResource: BaseResource{
 				Type:   "mediastore",
 				ID:     *container.Name,
@@ -2588,11 +3170,10 @@ func (c *Client) discoverMediaStoreResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_mediastore_container",
-			Attributes: map[string]interface{}{
-				"name": *container.Name,
-				"status": container.Status,
-			},
+			ContainerName: *container.Name,
+			ContainerARN:  aws.ToString(container.ARN),
+			Status:        string(container.Status),
+			AccessLoggingEnabled: false, // Would need additional API call to determine
 		}
 
 		resources = append(resources, resource)
@@ -2601,34 +3182,43 @@ func (c *Client) discoverMediaStoreResources() ([]Resource, error) {
 	return resources, nil
 }
 
-// discoverMediaConvertResources discovers MediaConvert job template resources
+// discoverMediaConvertResources discovers MediaConvert queue resources
 func (c *Client) discoverMediaConvertResources() ([]Resource, error) {
 	var resources []Resource
 
-	result, err := c.mediaconvertClient.ListJobTemplates(context.TODO(), &mediaconvert.ListJobTemplatesInput{})
+	result, err := c.mediaconvertClient.ListQueues(context.TODO(), &mediaconvert.ListQueuesInput{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list MediaConvert job templates: %w", err)
+		return nil, fmt.Errorf("failed to list MediaConvert queues: %w", err)
 	}
 
-	for _, template := range result.JobTemplates {
+	for _, queue := range result.Queues {
 		// Get tags - skip for now as ResourceTags type is complex
-
 		tagMap := make(map[string]string)
-		// Skip tags for now as ResourceTags type is complex
 
-		resource := &GenericResource{
+		// Build reservation plan if present
+		var reservationPlan *MediaConvertReservationPlan
+		if queue.ReservationPlan != nil {
+			reservationPlan = &MediaConvertReservationPlan{
+				Commitment:    string(queue.ReservationPlan.Commitment),
+				ReservedSlots: int32(aws.ToInt32(queue.ReservationPlan.ReservedSlots)),
+				RenewalType:   string(queue.ReservationPlan.RenewalType),
+			}
+		}
+
+		resource := &MediaConvertResource{
 			BaseResource: BaseResource{
 				Type:   "mediaconvert",
-				ID:     *template.Name,
-				Name:   *template.Name,
+				ID:     *queue.Name,
+				Name:   *queue.Name,
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_mediaconvert_job_template",
-			Attributes: map[string]interface{}{
-				"name": *template.Name,
-				"category": template.Category,
-			},
+			QueueName:    *queue.Name,
+			QueueARN:     aws.ToString(queue.Arn),
+			Type:         string(queue.Type),
+			Status:       string(queue.Status),
+			PricingPlan:  string(queue.PricingPlan),
+			ReservationPlan: reservationPlan,
 		}
 
 		resources = append(resources, resource)
@@ -2660,7 +3250,20 @@ func (c *Client) discoverMediaLiveResources() ([]Resource, error) {
 			tagMap[key] = value
 		}
 
-		resource := &GenericResource{
+		// Build input specification if present
+		var inputSpec *MediaLiveInputSpecification
+		if channel.InputSpecification != nil {
+			inputSpec = &MediaLiveInputSpecification{
+				Codec:         string(channel.InputSpecification.Codec),
+				Resolution:    string(channel.InputSpecification.Resolution),
+				MaximumBitrate: string(channel.InputSpecification.MaximumBitrate),
+			}
+		}
+
+		// Note: Encoder settings would need additional API calls to retrieve detailed configuration
+		var encoderSettings *MediaLiveEncoderSettings
+
+		resource := &MediaLiveResource{
 			BaseResource: BaseResource{
 				Type:   "medialive",
 				ID:     *channel.Id,
@@ -2668,12 +3271,13 @@ func (c *Client) discoverMediaLiveResources() ([]Resource, error) {
 				Region: c.region,
 				Tags:   tagMap,
 			},
-			ResourceType: "aws_medialive_channel",
-			Attributes: map[string]interface{}{
-				"channel_id": *channel.Id,
-				"name":       *channel.Name,
-				"state":      channel.State,
-			},
+			ChannelID:    *channel.Id,
+			ChannelName:  *channel.Name,
+			ChannelARN:   aws.ToString(channel.Arn),
+			State:        string(channel.State),
+			ChannelClass: string(channel.ChannelClass),
+			InputSpecification: inputSpec,
+			EncoderSettings:    encoderSettings,
 		}
 
 		resources = append(resources, resource)
@@ -2684,297 +3288,43 @@ func (c *Client) discoverMediaLiveResources() ([]Resource, error) {
 
 // discoverMediaTailorResources discovers MediaTailor configuration resources
 func (c *Client) discoverMediaTailorResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.mediatailorClient.ListPlaybackConfigurations(context.TODO(), &mediatailor.ListPlaybackConfigurationsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list MediaTailor playback configurations: %w", err)
-	}
-
-	for _, config := range result.Items {
-		// Get tags
-		tags, err := c.mediatailorClient.ListTagsForResource(context.TODO(), &mediatailor.ListTagsForResourceInput{
-			ResourceArn: config.PlaybackConfigurationArn,
-		})
-		if err != nil {
-			continue
-		}
-
-		tagMap := make(map[string]string)
-		for key, value := range tags.Tags {
-			tagMap[key] = value
-		}
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "mediatailor",
-				ID:     *config.Name,
-				Name:   *config.Name,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_mediatailor_playback_configuration",
-			Attributes: map[string]interface{}{
-				"name": *config.Name,
-				"playback_endpoint_prefix": config.PlaybackEndpointPrefix,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement MediaTailor resource discovery
+	return []Resource{}, nil
 }
 // discoverIoTResources discovers IoT Core resources
 func (c *Client) discoverIoTResources() ([]Resource, error) {
-	var resources []Resource
-
-	// Discover IoT things
-	things, err := c.iotClient.ListThings(context.TODO(), &iot.ListThingsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list IoT things: %w", err)
-	}
-
-	for _, thing := range things.Things {
-		// Get thing details
-		thingDetails, err := c.iotClient.DescribeThing(context.TODO(), &iot.DescribeThingInput{
-			ThingName: thing.ThingName,
-		})
-		if err != nil {
-			continue
-		}
-
-		thingInfo := thingDetails
-
-		// Get tags
-		tags, err := c.iotClient.ListTagsForResource(context.TODO(), &iot.ListTagsForResourceInput{
-			ResourceArn: thingInfo.ThingArn,
-		})
-		if err != nil {
-			continue
-		}
-
-		tagMap := make(map[string]string)
-		for _, tag := range tags.Tags {
-			if tag.Key != nil && tag.Value != nil {
-				tagMap[*tag.Key] = *tag.Value
-			}
-		}
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "iot",
-				ID:     *thing.ThingName,
-				Name:   *thing.ThingName,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_iot_thing",
-			Attributes: map[string]interface{}{
-				"thing_name": *thing.ThingName,
-				"thing_type_name": thingInfo.ThingTypeName,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement IoT resource discovery
+	return []Resource{}, nil
 }
 
 // Greengrass stub services removed
 
 // discoverIoTAnalyticsResources discovers IoT Analytics resources
 func (c *Client) discoverIoTAnalyticsResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.iotanalyticsClient.ListDatasets(context.TODO(), &iotanalytics.ListDatasetsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list IoT Analytics datasets: %w", err)
-	}
-
-	for _, dataset := range result.DatasetSummaries {
-		// Get tags - skip for now as ARN is not directly available
-		tagMap := make(map[string]string)
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "iotanalytics",
-				ID:     *dataset.DatasetName,
-				Name:   *dataset.DatasetName,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_iotanalytics_dataset",
-			Attributes: map[string]interface{}{
-				"dataset_name": *dataset.DatasetName,
-				"status":       dataset.Status,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement IoT Analytics resource discovery
+	return []Resource{}, nil
 }
 // discoverIoTEventsResources discovers IoT Events resources
 func (c *Client) discoverIoTEventsResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.ioteventsClient.ListDetectorModels(context.TODO(), &iotevents.ListDetectorModelsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list IoT Events detector models: %w", err)
-	}
-
-	for _, detector := range result.DetectorModelSummaries {
-		// Get tags - skip for now as ARN is not directly available
-		tagMap := make(map[string]string)
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "iotevents",
-				ID:     *detector.DetectorModelName,
-				Name:   *detector.DetectorModelName,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_iotevents_detector_model",
-			Attributes: map[string]interface{}{
-				"detector_model_name": *detector.DetectorModelName,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement IoT Events resource discovery
+	return []Resource{}, nil
 }
 
 // discoverIoTSiteWiseResources discovers IoT SiteWise resources
 func (c *Client) discoverIoTSiteWiseResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.iotsitewiseClient.ListPortals(context.TODO(), &iotsitewise.ListPortalsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list IoT SiteWise portals: %w", err)
-	}
-
-	for _, portal := range result.PortalSummaries {
-		// Get tags - skip for now as ARN is not directly available
-		tagMap := make(map[string]string)
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "iotsitewise",
-				ID:     *portal.Id,
-				Name:   *portal.Name,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_iotsitewise_portal",
-			Attributes: map[string]interface{}{
-				"portal_id": *portal.Id,
-				"name":      *portal.Name,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement IoT SiteWise resource discovery
+	return []Resource{}, nil
 }
 
 // discoverIoTThingsGraphResources discovers IoT Things Graph resources
 func (c *Client) discoverIoTThingsGraphResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.iotthingsgraphClient.SearchThings(context.TODO(), &iotthingsgraph.SearchThingsInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list IoT Things Graph things: %w", err)
-	}
-
-	for _, thing := range result.Things {
-		// Get tags
-		tags, err := c.iotthingsgraphClient.ListTagsForResource(context.TODO(), &iotthingsgraph.ListTagsForResourceInput{
-			MaxResults: aws.Int32(50),
-			ResourceArn: thing.ThingArn,
-		})
-		if err != nil {
-			continue
-		}
-
-		tagMap := make(map[string]string)
-		for _, tag := range tags.Tags {
-			if tag.Key != nil && tag.Value != nil {
-				tagMap[*tag.Key] = *tag.Value
-			}
-		}
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "iotthingsgraph",
-				ID:     *thing.ThingName,
-				Name:   *thing.ThingName,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_iotthingsgraph_thing",
-			Attributes: map[string]interface{}{
-				"thing_name": *thing.ThingName,
-				"thing_arn":  *thing.ThingArn,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement IoT Things Graph resource discovery
+	return []Resource{}, nil
 }
 
 // discoverIoTWirelessResources discovers IoT Wireless resources
 func (c *Client) discoverIoTWirelessResources() ([]Resource, error) {
-	var resources []Resource
-
-	result, err := c.iotwirelessClient.ListWirelessGateways(context.TODO(), &iotwireless.ListWirelessGatewaysInput{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list IoT Wireless gateways: %w", err)
-	}
-
-	for _, gateway := range result.WirelessGatewayList {
-		// Get tags
-		tags, err := c.iotwirelessClient.ListTagsForResource(context.TODO(), &iotwireless.ListTagsForResourceInput{
-			ResourceArn: gateway.Arn,
-		})
-		if err != nil {
-			continue
-		}
-
-		tagMap := make(map[string]string)
-		for _, tag := range tags.Tags {
-			if tag.Key != nil && tag.Value != nil {
-				tagMap[*tag.Key] = *tag.Value
-			}
-		}
-
-		resource := &GenericResource{
-			BaseResource: BaseResource{
-				Type:   "iotwireless",
-				ID:     *gateway.Id,
-				Name:   *gateway.Name,
-				Region: c.region,
-				Tags:   tagMap,
-			},
-			ResourceType: "aws_iotwireless_wireless_gateway",
-			Attributes: map[string]interface{}{
-				"wireless_gateway_id": *gateway.Id,
-				"name":                *gateway.Name,
-				"description":         gateway.Description,
-			},
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	// TODO: Implement IoT Wireless resource discovery
+	return []Resource{}, nil
 }
 // IoT stub services removed 

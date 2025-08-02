@@ -4,7 +4,8 @@ A powerful CLI tool that automatically discovers your existing AWS infrastructur
 
 ## 🚀 Features
 
-- **Comprehensive AWS Resource Discovery**: Supports 54 AWS services with full resource discovery and OpenTofu code generation
+- **Comprehensive AWS Resource Discovery**: Supports 58 AWS services with full resource discovery and OpenTofu code generation
+- **Automated Import Generation**: Generate OpenTofu import statements for existing AWS resources
 - **Modular Architecture**: Generates clean, modular OpenTofu configurations with resource-specific modules
 - **Security Best Practices**: Properly handles sensitive data with variables and encryption
 - **Production Ready**: Includes comprehensive error handling, deduplication, and validation
@@ -13,7 +14,7 @@ A powerful CLI tool that automatically discovers your existing AWS infrastructur
 
 ## 📋 Supported AWS Services
 
-### ✅ Fully Implemented Services (54)
+### ✅ Fully Implemented Services (58)
 
 These services have complete resource discovery and OpenTofu code generation:
 
@@ -58,7 +59,7 @@ These services have complete resource discovery and OpenTofu code generation:
 
 #### Monitoring & Logging
 - **CloudWatch** - Metrics, alarms, and dashboards
-- **CloudTrail** - API logging and audit trails
+- **CloudTrail** - API logging and audit trails with event selectors and insight selectors
 - **Config** - Configuration compliance
 
 #### Security & Management
@@ -97,9 +98,14 @@ These services have complete resource discovery and OpenTofu code generation:
 #### Enterprise Services
 - **WorkSpaces** - Virtual desktops
 
-### ✅ Fully Implemented Services (54)
+### ✅ Complete Implementation Status
 
-All services listed above are fully implemented and ready for production use.
+All 58 services are fully implemented with:
+- **Specific Resource Types**: No more GenericResource generation
+- **Complete Discovery**: Full AWS API integration for each service
+- **Proper OpenTofu Generation**: Service-specific HCL configuration
+- **Error Handling**: Comprehensive error handling and nil checks
+- **Resource Relationships**: Proper dependency management
 
 ## 🛠️ Installation
 
@@ -148,7 +154,7 @@ aws configure
 # Enter your AWS Access Key ID, Secret Access Key, and default region
 ```
 
-### 2. Discover Specific Resources
+### 2. Discover and Generate Infrastructure
 
 ```bash
 # Discover VPC and EC2 resources only
@@ -158,11 +164,18 @@ aws configure
 ### 3. Discover Complete Infrastructure
 
 ```bash
-# Discover all resources in your AWS account
+# Discover all 58 AWS services in your account
 ./transformer aws --region=us-east-1 --all --output=./complete-infrastructure --verbose
 ```
 
-### 4. Use Generated Configuration
+### 4. Generate Import Statements
+
+```bash
+# Generate import statements for existing resources
+./transformer import --resources=vpc,ec2,iam --output=./import-infrastructure --verbose
+```
+
+### 5. Use Generated Configuration
 
 ```bash
 cd complete-infrastructure
@@ -177,6 +190,22 @@ tofu plan
 tofu apply
 ```
 
+### 6. Import Existing Resources
+
+```bash
+cd import-infrastructure
+
+# Review generated import statements
+cat import.tf
+
+# Run automated import script
+chmod +x import.sh
+./import.sh
+
+# Verify import
+tofu plan
+```
+
 ## 📖 Usage Examples
 
 ### Basic Usage
@@ -185,12 +214,16 @@ tofu apply
 # Help
 ./transformer --help
 ./transformer aws --help
+./transformer import --help
 
 # Discover specific resource types
 ./transformer aws --region=us-west-2 --resources=vpc,ec2,rds --output=./infra
 
-# Discover all resources
+# Discover all 58 AWS services
 ./transformer aws --region=us-east-1 --all --output=./complete-infra --verbose
+
+# Generate import statements
+./transformer import --resources=vpc,ec2,iam --output=./import-infra --verbose
 ```
 
 ### Advanced Usage
@@ -204,11 +237,19 @@ tofu apply
 
 # Specific resource discovery
 ./transformer aws --region=us-east-1 --resources=vpc,ec2,alb,rds,lambda --output=./web-app-infra
+
+# Import with custom file name
+./transformer import --resources=s3,rds --file=my-import.tf --output=./imports --verbose
+
+# Import with state file generation
+./transformer import --resources=vpc,ec2 --state=terraform.tfstate --output=./imports --verbose
 ```
 
 ## 📁 Generated Structure
 
 The tool generates a complete OpenTofu project structure:
+
+### Infrastructure Generation (`transformer aws`)
 
 ```
 output-directory/
@@ -228,7 +269,32 @@ output-directory/
     └── ...
 ```
 
+### Import Generation (`transformer import`)
+
+```
+output-directory/
+├── import.tf            # Resource definitions and import statements
+├── import.sh            # Automated import script
+├── README.md            # Import process guide
+└── terraform.tfstate    # State file template (if --state specified)
+```
+
 ## 🔧 Key Features
+
+### Infrastructure Generation
+
+- **Comprehensive Resource Discovery**: Discovers and generates OpenTofu configurations for 58 AWS services
+- **Modular Architecture**: Each AWS service gets its own module with clean dependencies
+- **Security Best Practices**: Properly handles sensitive data with variables and encryption
+- **Production Ready**: Includes comprehensive error handling, deduplication, and validation
+
+### Import Generation
+
+- **Automated Import Statements**: Generates OpenTofu import commands for existing resources
+- **Resource Definitions**: Creates template resource definitions for customization
+- **Automated Scripts**: Generates shell scripts to automate the import process
+- **State Management**: Optional state file template generation
+- **Comprehensive Documentation**: Step-by-step import guides and troubleshooting
 
 ### Security & Sensitive Data Handling
 
@@ -249,12 +315,6 @@ output-directory/
 - **Detailed Logging**: Verbose mode for debugging
 - **Resource Validation**: Validates discovered resources before generation
 
-### Modular Architecture
-
-- **Resource Separation**: Each AWS service gets its own module
-- **Clean Dependencies**: Proper module references and data sources
-- **Maintainable Code**: Easy to modify and extend
-
 ## 🔒 Security Best Practices
 
 ### Before Applying Generated Configuration
@@ -264,6 +324,14 @@ output-directory/
 3. **Test in Non-Production**: Always test in a safe environment first
 4. **Backup Existing Infrastructure**: Create backups before making changes
 5. **Check Dependencies**: Ensure all referenced resources exist
+
+### Before Importing Existing Resources
+
+1. **Backup Current State**: Always backup your existing OpenTofu state
+2. **Review Resource Definitions**: Customize generated resource definitions to match your requirements
+3. **Test Import Process**: Test the import process in a non-production environment
+4. **Verify Resource IDs**: Ensure resource IDs are correct and resources exist
+5. **Check Permissions**: Verify AWS permissions for import operations
 
 ### Security Checklist
 
@@ -305,6 +373,18 @@ output-directory/
    tofu plan
    ```
 
+4. **Import Process Issues**
+   ```bash
+   # Verify resource exists
+   aws ec2 describe-instances --instance-ids i-12345678
+   
+   # Check import command syntax
+   tofu import --help
+   
+   # Remove conflicting resources from state
+   tofu state rm aws_instance.example
+   ```
+
 ### Debug Mode
 
 ```bash
@@ -313,6 +393,78 @@ output-directory/
 
 # Check specific resource types
 ./transformer aws --region=us-east-1 --resources=vpc,ec2 --output=./test --verbose
+
+# Debug import generation
+./transformer import --resources=vpc,ec2 --output=./debug-import --verbose
+```
+
+## 📋 Import Workflow
+
+### Step 1: Generate Import Statements
+
+```bash
+# Generate import statements for specific resources
+./transformer import --resources=vpc,ec2,iam --output=./import-infra --verbose
+
+# Generate for all resources
+./transformer import --all --output=./import-all --verbose
+```
+
+### Step 2: Review Generated Files
+
+```bash
+cd import-infra
+
+# Review resource definitions
+cat import.tf
+
+# Review import script
+cat import.sh
+
+# Review documentation
+cat README.md
+```
+
+### Step 3: Customize Resource Definitions
+
+Edit `import.tf` to customize resource configurations:
+
+```hcl
+resource "aws_vpc" "my_vpc" {
+  # Uncomment and customize these fields
+  # cidr_block = "10.0.0.0/16"
+  # enable_dns_hostnames = true
+  # enable_dns_support = true
+  
+  tags = {
+    Name = "my-vpc"
+    Environment = "production"
+  }
+}
+```
+
+### Step 4: Run Import Process
+
+```bash
+# Make script executable
+chmod +x import.sh
+
+# Run automated import
+./import.sh
+
+# Or run commands manually
+tofu import aws_vpc.my_vpc vpc-12345678
+tofu import aws_instance.my_instance i-87654321
+```
+
+### Step 5: Verify and Apply
+
+```bash
+# Verify import
+tofu plan
+
+# Apply if everything looks correct
+tofu apply
 ```
 
 ## 🏗️ Architecture
@@ -323,12 +475,13 @@ output-directory/
 transformer/
 ├── cmd/                    # CLI commands
 │   ├── root.go            # Root command setup
-│   └── aws.go             # AWS discovery command
+│   ├── aws.go             # AWS discovery command
+│   └── import.go          # Import generation command
 ├── internal/              # Core application logic
 │   ├── aws/              # AWS service integration
-│   │   ├── client.go     # AWS client management
+│   │   ├── client.go     # AWS client management (58+ services)
 │   │   ├── discovery.go  # Resource discovery logic
-│   │   └── types.go      # Resource type definitions
+│   │   └── types.go      # 58+ resource type definitions
 │   ├── generator/        # OpenTofu code generation
 │   │   └── generator.go  # Configuration file generation
 │   └── utils/            # Utility functions
@@ -341,8 +494,8 @@ transformer/
 
 ### Key Components
 
-- **AWS Client**: Manages AWS SDK connections and service clients
-- **Discovery Engine**: Discovers resources across multiple AWS services
+- **AWS Client**: Manages 58+ AWS SDK connections and service clients
+- **Discovery Engine**: Discovers resources across all 58 AWS services
 - **Generator**: Converts discovered resources to OpenTofu HCL
 - **CLI Interface**: User-friendly command-line interface
 
@@ -375,8 +528,9 @@ make build
 
 ### Service Implementation Status
 
-- **Fully Implemented**: 54 services with complete discovery and generation
-- **Total Coverage**: 54 AWS services
+- **Fully Implemented**: 58 services with complete discovery and generation
+- **Total Coverage**: 58 AWS services with specific resource types
+- **No Generic Resources**: All services have proper type definitions
 
 ## 📄 License
 

@@ -141,6 +141,24 @@ run-all: build
 	@echo "Running $(BINARY_NAME) with all resources..."
 	./$(BINARY_NAME) aws --region=us-east-1 --all --output=./complete-infrastructure --verbose
 
+# Run import with specific resources
+.PHONY: run-import
+run-import: build
+	@echo "Running $(BINARY_NAME) import with specific resources..."
+	./$(BINARY_NAME) import --region=us-east-1 --resources=vpc,ec2,iam --output=./import-infrastructure --verbose
+
+# Run import with all resources
+.PHONY: run-import-all
+run-import-all: build
+	@echo "Running $(BINARY_NAME) import with all resources..."
+	./$(BINARY_NAME) import --region=us-east-1 --all --output=./import-all-infrastructure --verbose
+
+# Test import feature
+.PHONY: test-import
+test-import: build
+	@echo "Testing import feature..."
+	./test-import.sh
+
 # Docker build
 .PHONY: docker-build
 docker-build:
@@ -228,6 +246,9 @@ help:
 	@echo "  run            - Run the application"
 	@echo "  run-example    - Run with example configuration"
 	@echo "  run-all        - Run with all resources"
+	@echo "  run-import     - Run import with specific resources"
+	@echo "  run-import-all - Run import with all resources"
+	@echo "  test-import    - Test import feature"
 	@echo "  docker-build   - Build Docker image"
 	@echo "  docker-run     - Run Docker container"
 	@echo "  docs           - Generate documentation"
