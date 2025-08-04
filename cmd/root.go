@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"transformer/internal/tui"
 )
 
 var (
@@ -13,6 +14,7 @@ var (
 	region  string
 	output  string
 	verbose bool
+	tuiMode bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -22,6 +24,20 @@ var rootCmd = &cobra.Command{
 	Long: `A CLI tool to transform existing AWS infrastructure into OpenTofu (formerly Terraform) 
 Infrastructure as Code (IaC) scripts. This tool discovers AWS resources and generates 
 corresponding OpenTofu configuration files.`,
+	RunE: runRoot,
+}
+
+// runRoot handles the root command execution
+func runRoot(cmd *cobra.Command, args []string) error {
+	if tuiMode {
+		fmt.Println("Starting interactive TUI mode...")
+		fmt.Println("Use arrow keys to navigate, Enter to select, Ctrl+C to quit")
+		fmt.Println()
+		return tui.RunTUI()
+	}
+	
+	// If no subcommand is provided and TUI is not enabled, show help
+	return cmd.Help()
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -40,11 +56,13 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&region, "region", "us-east-1", "AWS region")
 	rootCmd.PersistentFlags().StringVar(&output, "output", "./infrastructure", "output directory for generated files")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "verbose output")
+	rootCmd.PersistentFlags().BoolVar(&tuiMode, "tui", false, "start interactive terminal user interface")
 
 	// Bind flags to viper
 	viper.BindPFlag("region", rootCmd.PersistentFlags().Lookup("region"))
 	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	viper.BindPFlag("tui", rootCmd.PersistentFlags().Lookup("tui"))
 }
 
 // initConfig reads in config file and ENV variables if set.

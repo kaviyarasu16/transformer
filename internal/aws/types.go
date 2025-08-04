@@ -8,8 +8,10 @@ import (
 // SanitizeResourceName converts a resource name to a valid OpenTofu resource name
 func SanitizeResourceName(name string) string {
 	// Replace invalid characters with underscores
-	invalidChars := []string{" ", "-", ".", "/", "\\", ":", "*", "?", "\"", "<", ">", "|", "!"}
+	invalidChars := []string{" ", "-", ".", "/", "\\", ":", "*", "?", "\"", "<", ">", "|", "!", "@", "#", "$", "%", "^", "&", "(", ")", "+", "=", "[", "]", "{", "}", "|", "\\", ";", "'", ",", "?"}
 	result := name
+	
+	// Replace invalid characters
 	for _, char := range invalidChars {
 		result = strings.ReplaceAll(result, char, "_")
 	}
@@ -27,6 +29,44 @@ func SanitizeResourceName(name string) string {
 		result = prefix + "_" + suffix
 	}
 
+	// Remove any double underscores that might have been created
+	result = strings.ReplaceAll(result, "__", "_")
+	
+	// Remove leading/trailing underscores
+	result = strings.Trim(result, "_")
+
+	return result
+}
+
+// SanitizeSecretsManagerName specifically handles SecretsManager names which have different requirements
+func SanitizeSecretsManagerName(name string) string {
+	// Replace invalid characters including forward slashes
+	result := strings.ReplaceAll(name, "!", "_")
+	result = strings.ReplaceAll(result, " ", "_")
+	result = strings.ReplaceAll(result, "-", "_")
+	result = strings.ReplaceAll(result, "/", "_")
+	result = strings.ReplaceAll(result, "\\", "_")
+	result = strings.ReplaceAll(result, ".", "_")
+	result = strings.ReplaceAll(result, ":", "_")
+	
+	// Ensure it starts with a letter
+	if len(result) > 0 && (result[0] < 'a' || result[0] > 'z') && (result[0] < 'A' || result[0] > 'Z') {
+		result = "secret_" + result
+	}
+
+	// Limit length
+	if len(result) > 63 {
+		prefix := result[:50]
+		suffix := result[len(result)-13:]
+		result = prefix + "_" + suffix
+	}
+
+	// Remove any double underscores
+	result = strings.ReplaceAll(result, "__", "_")
+	
+	// Remove leading/trailing underscores
+	result = strings.Trim(result, "_")
+
 	return result
 }
 
@@ -37,6 +77,8 @@ type Resource interface {
 	GetName() string
 	GetRegion() string
 	GetTags() map[string]string
+	GetARN() string
+	GetTagsJSON() string
 	ToOpenTofu() (string, error)
 	GetDependencies() []string
 }
@@ -73,6 +115,32 @@ func (r *BaseResource) GetTags() map[string]string {
 
 func (r *BaseResource) GetDependencies() []string {
 	return r.Dependencies
+}
+
+func (r *BaseResource) GetARN() string {
+	// This is a default implementation
+	// Individual resource types should override this if they have specific ARN logic
+	return ""
+}
+
+// GetTagsJSON returns tags as a JSON string
+func (r *BaseResource) GetTagsJSON() string {
+	if len(r.Tags) == 0 {
+		return "{}"
+	}
+	
+	// Convert map to JSON string
+	tagsJSON := "{"
+	first := true
+	for key, value := range r.Tags {
+		if !first {
+			tagsJSON += ","
+		}
+		tagsJSON += fmt.Sprintf(`"%s":"%s"`, key, value)
+		first = false
+	}
+	tagsJSON += "}"
+	return tagsJSON
 }
 
 // VPCResource represents an AWS VPC
@@ -290,7 +358,9 @@ func (r *IAMRoleResource) ToOpenTofu() (string, error) {
 		r.Name,
 		r.Path,
 		r.Description,
-		r.AssumeRolePolicy)
+		fmt.Sprintf(`<<EOF
+%s
+EOF`, r.AssumeRolePolicy))
 
 	// Add tags
 	if len(r.Tags) > 0 {
@@ -330,7 +400,9 @@ resource "aws_iam_role_policy" "%s_%s" {
   name = "%s"
   role = aws_iam_role.%s.id
   policy = %s
-}`, resourceName, inlinePolicyName, policyName, resourceName, policyDocument)
+}`, resourceName, inlinePolicyName, policyName, resourceName, fmt.Sprintf(`<<EOF
+%s
+EOF`, policyDocument))
 	}
 
 	return content, nil
@@ -993,8 +1065,17 @@ func (r *ElastiCacheResource) ToOpenTofu() (string, error) {
 
 	// Add engine version if specified
 	if r.EngineVersion != "" {
+		// Fix Redis version format - remove patch version for Redis v6+
+		engineVersion := r.EngineVersion
+		if r.Engine == "redis" && strings.HasPrefix(engineVersion, "7.") {
+			// For Redis 7.x, use major.minor format
+			parts := strings.Split(engineVersion, ".")
+			if len(parts) >= 2 {
+				engineVersion = fmt.Sprintf("%s.%s", parts[0], parts[1])
+			}
+		}
 		content += fmt.Sprintf(`
-  engine_version       = "%s"`, r.EngineVersion)
+  engine_version       = "%s"`, engineVersion)
 	}
 
 	// Add multi-AZ if enabled
@@ -1186,6 +1267,13 @@ func (r *DynamoDBResource) ToOpenTofu() (string, error) {
   range_key      = "%s"`, r.RangeKey)
 	}
 
+	// Add attribute definitions
+	content += `
+  attribute {
+    name = "LockID"
+    type = "S"
+  }`
+
 	// Add stream settings if enabled
 	if r.StreamEnabled {
 		content += fmt.Sprintf(`
@@ -1312,13 +1400,8 @@ func (r *DynamoDBResource) ToOpenTofu() (string, error) {
   tags = {`
 	if len(r.Tags) > 0 {
 		for k, v := range r.Tags {
-			// Quote tag keys that contain special characters
-			quotedKey := k
-			if strings.ContainsAny(k, ":-") {
-				quotedKey = fmt.Sprintf(`"%s"`, k)
-			}
 			content += fmt.Sprintf(`
-    %s = "%s"`, quotedKey, v)
+    %s = "%s"`, k, v)
 		}
 	}
 	content += `
@@ -2943,6 +3026,10 @@ type SNSResource struct {
 	SQSSuccessFeedbackRoleARN string `json:"sqs_success_feedback_role_arn,omitempty"`
 	SQSFailureFeedbackRoleARN string `json:"sqs_failure_feedback_role_arn,omitempty"`
 	SQSSuccessFeedbackSampleRate int32 `json:"sqs_success_feedback_sample_rate,omitempty"`
+}
+
+func (r *SNSResource) GetARN() string {
+	return r.ARN
 }
 
 func (r *SNSResource) ToOpenTofu() (string, error) {
@@ -5213,12 +5300,12 @@ type SecretsManagerResource struct {
 }
 
 func (r *SecretsManagerResource) ToOpenTofu() (string, error) {
-	// Sanitize the resource name for OpenTofu
-	resourceName := SanitizeResourceName(r.Name)
+	// Sanitize the resource name for OpenTofu using SecretsManager-specific sanitization
+	resourceName := SanitizeSecretsManagerName(r.Name)
 	
 	content := fmt.Sprintf(`resource "aws_secretsmanager_secret" "%s" {
   name = "%s"`,
-		resourceName, r.Name)
+		resourceName, SanitizeSecretsManagerName(r.Name))
 
 	if r.Description != "" {
 		content += fmt.Sprintf(`
@@ -5472,12 +5559,22 @@ type FirehoseResource struct {
 	DeliveryStreamStatus string `json:"delivery_stream_status"`
 }
 
+func (r *FirehoseResource) GetARN() string {
+	// Firehose streams don't have a specific ARN field, so we'll construct one
+	return fmt.Sprintf("arn:aws:firehose:%s:123456789012:deliverystream/%s", r.Region, r.Name)
+}
+
 func (r *FirehoseResource) ToOpenTofu() (string, error) {
 	// Sanitize the resource name for OpenTofu
 	resourceName := SanitizeResourceName(r.Name)
 	
 	content := fmt.Sprintf(`resource "aws_kinesis_firehose_delivery_stream" "%s" {
-  name = "%s"`,
+  name = "%s"
+  destination = "extended_s3"
+  extended_s3_configuration {
+    bucket_arn = "arn:aws:s3:::your-bucket-name"
+    role_arn   = "arn:aws:iam::123456789012:role/firehose-role"
+  }`,
 		resourceName, r.Name)
 
 	// Add tags

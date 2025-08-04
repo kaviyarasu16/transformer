@@ -5,6 +5,7 @@ import (
 
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -69,7 +70,17 @@ func decodeURLEncodedJSON(encoded string) string {
 		// If decoding fails, return the original string
 		return encoded
 	}
-	return decoded
+	
+	// Remove newlines and extra whitespace for OpenTofu compatibility
+	decoded = strings.ReplaceAll(decoded, "\n", "")
+	decoded = strings.ReplaceAll(decoded, "\r", "")
+	decoded = strings.ReplaceAll(decoded, "\t", "")
+	
+	// Remove extra spaces between JSON elements
+	re := regexp.MustCompile(`\s+`)
+	decoded = re.ReplaceAllString(decoded, " ")
+	
+	return strings.TrimSpace(decoded)
 }
 
 // Helper function to parse string to int32
@@ -258,6 +269,11 @@ func (c *Client) discoverIAMResources() ([]Resource, error) {
 	}
 
 	for _, role := range result.Roles {
+		// Skip roles with names that are too long for OpenTofu
+		if role.RoleName != nil && len(*role.RoleName) > 64 {
+			continue
+		}
+		
 		// Get role details
 		roleDetails, err := c.iamClient.GetRole(context.TODO(), &iam.GetRoleInput{
 			RoleName: role.RoleName,
@@ -787,9 +803,32 @@ func (c *Client) discoverSNSResources() ([]Resource, error) {
 	}
 
 	for _, topic := range result.Topics {
+		// Skip topics with invalid ARNs
+		if topic.TopicArn == nil || *topic.TopicArn == "" {
+			continue
+		}
+
+		// Validate ARN format
+		if !isValidSNSArn(*topic.TopicArn) {
+			continue
+		}
+
 		// Extract topic name from ARN
 		parts := strings.Split(*topic.TopicArn, ":")
+		if len(parts) < 6 {
+			continue
+		}
 		topicName := parts[len(parts)-1]
+
+		// Skip empty topic names
+		if topicName == "" {
+			continue
+		}
+
+		// Additional validation: ensure topic name is valid
+		if !isValidSNSTopicName(topicName) {
+			continue
+		}
 
 		// Get topic attributes
 		attributes, err := c.snsClient.GetTopicAttributes(context.TODO(), &sns.GetTopicAttributesInput{
@@ -817,6 +856,52 @@ func (c *Client) discoverSNSResources() ([]Resource, error) {
 	}
 
 	return resources, nil
+}
+
+// isValidSNSArn validates SNS ARN format
+func isValidSNSArn(arn string) bool {
+	if arn == "" {
+		return false
+	}
+	
+	// Check if it starts with arn:aws:sns:
+	if !strings.HasPrefix(arn, "arn:aws:sns:") {
+		return false
+	}
+	
+	// Split by : and check we have at least 6 parts
+	parts := strings.Split(arn, ":")
+	if len(parts) < 6 {
+		return false
+	}
+	
+	// Check format: arn:aws:sns:region:account:topic-name
+	if parts[0] != "arn" || parts[1] != "aws" || parts[2] != "sns" {
+		return false
+	}
+	
+	// Check that topic name is not empty
+	if parts[len(parts)-1] == "" {
+		return false
+	}
+	
+	return true
+}
+
+// isValidSNSTopicName validates SNS topic name format
+func isValidSNSTopicName(name string) bool {
+	if name == "" {
+		return false
+	}
+	
+	// Check length (1-256 characters)
+	if len(name) < 1 || len(name) > 256 {
+		return false
+	}
+	
+	// Check pattern: [a-zA-Z0-9_-]+
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
+	return matched
 }
 
 // discoverCloudWatchResources discovers CloudWatch log group resources
@@ -1089,6 +1174,11 @@ func (c *Client) discoverElastiCacheResources() ([]Resource, error) {
 	}
 
 	for _, cluster := range result.CacheClusters {
+		// Skip clusters with invalid identifiers
+		if cluster.CacheClusterId == nil || !isValidElastiCacheClusterId(*cluster.CacheClusterId) {
+			continue
+		}
+		
 		// Get tags
 		tags, err := c.elasticacheClient.ListTagsForResource(context.TODO(), &elasticache.ListTagsForResourceInput{
 			ResourceName: cluster.ARN,
@@ -1145,6 +1235,23 @@ func (c *Client) discoverElastiCacheResources() ([]Resource, error) {
 	}
 
 	return resources, nil
+}
+
+// isValidElastiCacheClusterId validates ElastiCache cluster ID format
+func isValidElastiCacheClusterId(id string) bool {
+	if id == "" {
+		return false
+	}
+	
+	// Check length (1-50 characters)
+	if len(id) < 1 || len(id) > 50 {
+		return false
+	}
+	
+	// Check pattern: must begin with a letter, contain only ASCII letters, digits, and hyphens
+	// and must not end with a hyphen or contain two consecutive hyphens
+	matched, _ := regexp.MatchString(`^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]$`, id)
+	return matched
 }
 
 // discoverDynamoDBResources discovers DynamoDB table resources
@@ -3094,6 +3201,22 @@ func (c *Client) discoverFirehoseResources() ([]Resource, error) {
 	}
 
 	for _, streamName := range result.DeliveryStreamNames {
+		// Skip empty or invalid stream names
+		if streamName == "" || len(strings.TrimSpace(streamName)) == 0 {
+			continue
+		}
+
+		// Validate stream name format
+		if !isValidFirehoseStreamName(streamName) {
+			continue
+		}
+
+		// Additional validation: ensure stream name is not just whitespace or special characters
+		cleanName := strings.TrimSpace(streamName)
+		if cleanName == "" || len(cleanName) == 0 {
+			continue
+		}
+
 		// Get stream details
 		streamDetails, err := c.firehoseClient.DescribeDeliveryStream(context.TODO(), &firehose.DescribeDeliveryStreamInput{
 			DeliveryStreamName: &streamName,
@@ -3137,6 +3260,23 @@ func (c *Client) discoverFirehoseResources() ([]Resource, error) {
 
 	return resources, nil
 }
+
+// isValidFirehoseStreamName validates Firehose stream name format
+func isValidFirehoseStreamName(name string) bool {
+	if name == "" {
+		return false
+	}
+	
+	// Check length (1-64 characters)
+	if len(name) < 1 || len(name) > 64 {
+		return false
+	}
+	
+	// Check pattern: [a-zA-Z0-9_.-]+
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_.-]+$`, name)
+	return matched
+}
+
 // discoverMediaStoreResources discovers MediaStore container resources
 func (c *Client) discoverMediaStoreResources() ([]Resource, error) {
 	var resources []Resource

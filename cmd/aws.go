@@ -13,6 +13,7 @@ import (
 var (
 	resources string
 	all       bool
+	stateFile bool
 )
 
 // awsCmd represents the aws command
@@ -21,7 +22,14 @@ var awsCmd = &cobra.Command{
 	Short: "Transform AWS infrastructure to OpenTofu",
 	Long: `Transform existing AWS infrastructure into OpenTofu (formerly Terraform) 
 Infrastructure as Code (IaC) scripts. This command discovers AWS resources 
-and generates corresponding OpenTofu configuration files.`,
+and generates corresponding OpenTofu configuration files.
+
+Features:
+- Generate complete OpenTofu infrastructure configuration
+- Create modular, maintainable code
+- Include proper variable definitions
+- Generate state file (Terraformer-like functionality)
+- Provide comprehensive documentation`,
 	RunE: runAWSCommand,
 }
 
@@ -31,6 +39,7 @@ func init() {
 	// Local flags for aws command
 	awsCmd.Flags().StringVar(&resources, "resources", "", "comma-separated list of resource types to discover (e.g., vpc,ec2,iam,rds)")
 	awsCmd.Flags().BoolVar(&all, "all", false, "discover all supported resource types")
+	awsCmd.Flags().BoolVar(&stateFile, "statefile", false, "generate terraform.tfstate file (Terraformer-like functionality)")
 }
 
 func runAWSCommand(cmd *cobra.Command, args []string) error {
@@ -106,7 +115,7 @@ func runAWSCommand(cmd *cobra.Command, args []string) error {
 
 	// Generate OpenTofu configuration
 	gen := generator.NewGenerator(outputDir, verbose)
-	err = gen.Generate(allResources, region)
+	err = gen.Generate(allResources, region, stateFile)
 	if err != nil {
 		return fmt.Errorf("failed to generate OpenTofu configuration: %w", err)
 	}
@@ -127,6 +136,9 @@ func runAWSCommand(cmd *cobra.Command, args []string) error {
 		
 		fmt.Printf("   • Resource types: %d\n", len(resourceCounts))
 		fmt.Printf("   • Output directory: %s\n", outputDir)
+		if stateFile {
+			fmt.Printf("   • State file generation: enabled\n")
+		}
 		fmt.Println()
 		fmt.Printf("🔍 Resources by type:\n")
 		for resourceType, count := range resourceCounts {
@@ -138,6 +150,9 @@ func runAWSCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   • variables.tf - Variable definitions\n")
 		fmt.Printf("   • outputs.tf - Output definitions\n")
 		fmt.Printf("   • versions.tf - Provider version constraints\n")
+		if stateFile {
+			fmt.Printf("   • terraform.tfstate - Complete state file (Terraformer-like)\n")
+		}
 		fmt.Printf("   • README.md - Documentation and usage guide\n")
 		fmt.Printf("   • modules/ - Resource-specific modules\n")
 		fmt.Println()
@@ -145,7 +160,11 @@ func runAWSCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   1. Review the generated configuration\n")
 		fmt.Printf("   2. Update sensitive values (passwords, keys)\n")
 		fmt.Printf("   3. Test in a non-production environment\n")
-		fmt.Printf("   4. Run 'tofu init' and 'tofu plan'\n")
+		if stateFile {
+			fmt.Printf("   4. Run 'tofu init' and 'tofu plan' (state file included)\n")
+		} else {
+			fmt.Printf("   4. Run 'tofu init' and 'tofu plan'\n")
+		}
 		fmt.Printf("   5. Apply the configuration with 'tofu apply'\n")
 		fmt.Println()
 		fmt.Printf("⚠️  Important notes:\n")

@@ -15,6 +15,7 @@ var (
 	importAll       bool
 	importFile      string
 	importState     string
+	generateState   bool
 )
 
 // importCmd represents the import command
@@ -23,7 +24,13 @@ var importCmd = &cobra.Command{
 	Short: "Generate OpenTofu import statements for AWS resources",
 	Long: `Generate OpenTofu import statements for existing AWS infrastructure.
 This command discovers AWS resources and generates corresponding import statements
-that can be used to import existing resources into OpenTofu state.`,
+that can be used to import existing resources into OpenTofu state.
+
+Features:
+- Generate import statements and resource definitions
+- Create automated import scripts
+- Generate state file templates (like Terraformer)
+- Provide comprehensive import guides`,
 	RunE: runImportCommand,
 }
 
@@ -35,6 +42,7 @@ func init() {
 	importCmd.Flags().BoolVar(&importAll, "all", false, "import all supported resource types")
 	importCmd.Flags().StringVar(&importFile, "file", "import.tf", "output file for import statements")
 	importCmd.Flags().StringVar(&importState, "state", "", "OpenTofu state file path (optional)")
+	importCmd.Flags().BoolVar(&generateState, "state-file", false, "generate a complete state file (like Terraformer)")
 }
 
 func runImportCommand(cmd *cobra.Command, args []string) error {
@@ -64,6 +72,9 @@ func runImportCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Import file: %s\n", importFile)
 		if importState != "" {
 			fmt.Printf("State file: %s\n", importState)
+		}
+		if generateState {
+			fmt.Println("State file generation: enabled")
 		}
 	}
 
@@ -114,7 +125,14 @@ func runImportCommand(cmd *cobra.Command, args []string) error {
 
 	// Generate import statements
 	importGen := generator.NewImportGenerator(outputDir, verbose)
-	err = importGen.GenerateImportStatements(allResources, region, importFile, importState)
+	
+	// If state file generation is requested, set the state file path
+	stateFilePath := importState
+	if generateState && importState == "" {
+		stateFilePath = "terraform.tfstate"
+	}
+	
+	err = importGen.GenerateImportStatements(allResources, region, importFile, stateFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to generate import statements: %w", err)
 	}
@@ -136,6 +154,9 @@ func runImportCommand(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   • Resource types: %d\n", len(resourceCounts))
 		fmt.Printf("   • Output directory: %s\n", outputDir)
 		fmt.Printf("   • Import file: %s\n", importFile)
+		if stateFilePath != "" {
+			fmt.Printf("   • State file: %s\n", stateFilePath)
+		}
 		fmt.Println()
 		fmt.Printf("🔍 Resources by type:\n")
 		for resourceType, count := range resourceCounts {
@@ -143,17 +164,35 @@ func runImportCommand(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println()
 		fmt.Printf("📁 Generated files:\n")
-		fmt.Printf("   • %s - Import statements\n", importFile)
-		if importState != "" {
-			fmt.Printf("   • %s - State file template\n", importState)
+		fmt.Printf("   • %s - Import statements and resource definitions\n", importFile)
+		fmt.Printf("   • import.sh - Automated import script\n")
+		fmt.Printf("   • README.md - Import guide\n")
+		if stateFilePath != "" {
+			fmt.Printf("   • %s - State file template\n", stateFilePath)
 		}
 		fmt.Println()
-		fmt.Printf("🚀 Next steps:\n")
-		fmt.Printf("   1. Review the generated import statements\n")
-		fmt.Printf("   2. Run 'tofu init' to initialize OpenTofu\n")
-		fmt.Printf("   3. Run 'tofu import' commands from the generated file\n")
-		fmt.Printf("   4. Run 'tofu plan' to verify the import\n")
-		fmt.Printf("   5. Run 'tofu apply' to finalize the import\n")
+		
+		if generateState {
+			fmt.Printf("🚀 Terraformer-like State File Generation:\n")
+			fmt.Printf("   ✅ Complete state file generated: %s\n", stateFilePath)
+			fmt.Printf("   ✅ Resource definitions included\n")
+			fmt.Printf("   ✅ Import commands ready to execute\n")
+			fmt.Printf("   ✅ Automated script provided\n")
+			fmt.Println()
+			fmt.Printf("🎯 Easy Import Process:\n")
+			fmt.Printf("   1. Copy %s to terraform.tfstate\n", stateFilePath)
+			fmt.Printf("   2. Run: tofu init\n")
+			fmt.Printf("   3. Run: ./import.sh (automated import)\n")
+			fmt.Printf("   4. Run: tofu plan (verify no changes)\n")
+			fmt.Printf("   5. Run: tofu apply (finalize)\n")
+		} else {
+			fmt.Printf("🚀 Next steps:\n")
+			fmt.Printf("   1. Review the generated import statements\n")
+			fmt.Printf("   2. Run 'tofu init' to initialize OpenTofu\n")
+			fmt.Printf("   3. Run 'tofu import' commands from the generated file\n")
+			fmt.Printf("   4. Run 'tofu plan' to verify the import\n")
+			fmt.Printf("   5. Run 'tofu apply' to finalize the import\n")
+		}
 		fmt.Println()
 		fmt.Printf("⚠️  Important notes:\n")
 		fmt.Printf("   • Always backup your existing state before importing\n")

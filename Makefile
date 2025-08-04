@@ -129,6 +129,12 @@ run: build
 	@echo "Running $(BINARY_NAME)..."
 	./$(BINARY_NAME)
 
+# Run with TUI mode
+.PHONY: run-tui
+run-tui: build
+	@echo "Running $(BINARY_NAME) in TUI mode..."
+	./$(BINARY_NAME) --tui
+
 # Run with example configuration
 .PHONY: run-example
 run-example: build
@@ -244,6 +250,7 @@ help:
 	@echo "  install        - Install the binary"
 	@echo "  uninstall      - Uninstall the binary"
 	@echo "  run            - Run the application"
+	@echo "  run-tui        - Run with interactive TUI mode"
 	@echo "  run-example    - Run with example configuration"
 	@echo "  run-all        - Run with all resources"
 	@echo "  run-import     - Run import with specific resources"

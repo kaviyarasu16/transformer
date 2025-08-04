@@ -1,11 +1,13 @@
 # AWS to OpenTofu Transformer
 
-A powerful CLI tool that automatically discovers your existing AWS infrastructure and generates corresponding OpenTofu (formerly Terraform) configuration files.
+A powerful CLI tool that automatically discovers your existing AWS infrastructure and generates corresponding OpenTofu (formerly Terraform) configuration files with **Terraformer-like state file generation**.
 
 ## 🚀 Features
 
-- **Comprehensive AWS Resource Discovery**: Supports 58 AWS services with full resource discovery and OpenTofu code generation
-- **Automated Import Generation**: Generate OpenTofu import statements for existing AWS resources
+- **Comprehensive AWS Resource Discovery**: Supports 57 AWS services with full resource discovery and OpenTofu code generation
+- **Terraformer-like State File Generation**: Automatically generates `terraform.tfstate` files for seamless OpenTofu integration
+- **Automated Import Generation**: Generate OpenTofu import statements for existing AWS resources with enhanced automation
+- **Interactive TUI Mode**: Beautiful terminal user interface with Bubble Tea and Lipgloss
 - **Modular Architecture**: Generates clean, modular OpenTofu configurations with resource-specific modules
 - **Security Best Practices**: Properly handles sensitive data with variables and encryption
 - **Production Ready**: Includes comprehensive error handling, deduplication, and validation
@@ -14,9 +16,9 @@ A powerful CLI tool that automatically discovers your existing AWS infrastructur
 
 ## 📋 Supported AWS Services
 
-### ✅ Fully Implemented Services (58)
+### ✅ Fully Implemented Services (57)
 
-These services have complete resource discovery and OpenTofu code generation:
+These services have complete resource discovery, OpenTofu code generation, and **correct resource type mapping**:
 
 #### Core Infrastructure
 - **VPC** - Virtual Private Clouds, Subnets, Route Tables, Internet Gateways
@@ -100,10 +102,12 @@ These services have complete resource discovery and OpenTofu code generation:
 
 ### ✅ Complete Implementation Status
 
-All 58 services are fully implemented with:
+All 57 services are fully implemented with:
 - **Specific Resource Types**: No more GenericResource generation
 - **Complete Discovery**: Full AWS API integration for each service
 - **Proper OpenTofu Generation**: Service-specific HCL configuration
+- **Correct Resource Type Mapping**: All services mapped to proper OpenTofu resource types
+- **State File Generation**: Terraformer-like state file generation for seamless integration
 - **Error Handling**: Comprehensive error handling and nil checks
 - **Resource Relationships**: Proper dependency management
 
@@ -154,43 +158,57 @@ aws configure
 # Enter your AWS Access Key ID, Secret Access Key, and default region
 ```
 
-### 2. Discover and Generate Infrastructure
+### 2. Interactive TUI Mode (Recommended)
+
+```bash
+# Start the interactive terminal user interface
+./transformer --tui
+```
+
+The TUI provides:
+- **Resource Selection**: Choose which AWS services to discover
+- **Configuration**: Set region, output directory, and verbose mode
+- **Real-time Progress**: Watch discovery progress with animated progress bars
+- **Results View**: See discovered resources and generation status
+- **Beautiful UI**: Modern terminal interface with colors and animations
+
+### 3. Command Line Mode
 
 ```bash
 # Discover VPC and EC2 resources only
 ./transformer aws --region=us-east-1 --resources=vpc,ec2 --output=./my-infrastructure --verbose
 ```
 
-### 3. Discover Complete Infrastructure
+### 4. Discover Complete Infrastructure with State File
 
 ```bash
-# Discover all 58 AWS services in your account
-./transformer aws --region=us-east-1 --all --output=./complete-infrastructure --verbose
+# Discover all 57 AWS services with state file generation (Terraformer-like)
+./transformer aws --region=us-east-1 --all --output=./complete-infrastructure --statefile --verbose
 ```
 
-### 4. Generate Import Statements
+### 5. Generate Import Statements with Enhanced Automation
 
 ```bash
-# Generate import statements for existing resources
+# Generate import statements for existing resources with state file
 ./transformer import --resources=vpc,ec2,iam --output=./import-infrastructure --verbose
 ```
 
-### 5. Use Generated Configuration
+### 6. Use Generated Configuration (State File Included)
 
 ```bash
 cd complete-infrastructure
 
-# Initialize OpenTofu
+# Initialize OpenTofu (state file already included)
 tofu init
 
-# Review the plan
+# Review the plan (should show "no changes" due to pre-generated state)
 tofu plan
 
 # Apply the configuration (in non-production first!)
 tofu apply
 ```
 
-### 6. Import Existing Resources
+### 7. Import Existing Resources with Enhanced Automation
 
 ```bash
 cd import-infrastructure
@@ -198,15 +216,75 @@ cd import-infrastructure
 # Review generated import statements
 cat import.tf
 
-# Run automated import script
+# Run automated import script with pre-flight checks
 chmod +x import.sh
 ./import.sh
 
-# Verify import
+# Verify import (should show "no changes")
 tofu plan
 ```
 
 ## 📖 Usage Examples
+
+### Interactive TUI Mode
+
+```bash
+# Start the interactive terminal user interface
+./transformer --tui
+
+# TUI Features:
+# - Navigate with arrow keys (↑↓)
+# - Select resources with Space
+# - Use "Select All" option for bulk selection
+# - Confirm selections with Enter
+# - Go back with Esc
+# - Quit with Ctrl+C or q
+```
+
+**🎯 Multi-Step TUI Flow:**
+
+#### **Step 1: Select AWS Region**
+- Choose from 14 common AWS regions
+- Navigate with ↑↓ arrows
+- Press Enter to confirm selection
+
+#### **Step 2: Select AWS Services**
+- Browse all 57 AWS services with pagination
+- Use `[SELECT ALL]` option for bulk selection
+- Individual service selection with checkboxes
+- Space to toggle, Enter to confirm
+
+#### **Step 3: Configure Output**
+- Set output folder path (default: `./infrastructure`)
+- Toggle verbose mode with Space
+- Press Enter to continue
+
+#### **Step 4: Confirm Configuration**
+- Review selected region, services, and settings
+- Shows "ALL SERVICES" if all selected
+- Two buttons: "Generate OpenTofu" and "Cancel"
+- Use ←→ to navigate buttons
+
+#### **Step 5: Discover Resources**
+- Real-time progress bar (0% to 100%)
+- Animated spinner and status updates
+- Simulated discovery process
+
+#### **Step 6: View Results**
+- Summary of discovered resources
+- Resource counts by service type
+- Output directory location
+- Press Enter to exit
+
+**🎨 Enhanced Features:**
+- **Step-by-step guided flow** with clear progress
+- **Region selection** with 14 common AWS regions
+- **Service selection** with 'Select All' option
+- **Output folder configuration** with verbose mode toggle
+- **Confirmation page** with comprehensive summary
+- **Beautiful button-style navigation** using Lipgloss
+- **Progress tracking** with animations
+- **Validation** at each step
 
 ### Basic Usage
 
@@ -219,26 +297,26 @@ tofu plan
 # Discover specific resource types
 ./transformer aws --region=us-west-2 --resources=vpc,ec2,rds --output=./infra
 
-# Discover all 58 AWS services
-./transformer aws --region=us-east-1 --all --output=./complete-infra --verbose
+# Discover all 57 AWS services with state file
+./transformer aws --region=us-east-1 --all --output=./complete-infra --statefile --verbose
 
-# Generate import statements
+# Generate import statements with enhanced automation
 ./transformer import --resources=vpc,ec2,iam --output=./import-infra --verbose
 ```
 
 ### Advanced Usage
 
 ```bash
-# Custom output directory
-./transformer aws --region=eu-west-1 --resources=iam,s3 --output=./security-resources
+# Custom output directory with state file generation
+./transformer aws --region=eu-west-1 --resources=iam,s3 --output=./security-resources --statefile
 
-# Verbose output for debugging
-./transformer aws --region=us-east-1 --all --output=./debug-infra --verbose
+# Verbose output for debugging with state file
+./transformer aws --region=us-east-1 --all --output=./debug-infra --statefile --verbose
 
-# Specific resource discovery
-./transformer aws --region=us-east-1 --resources=vpc,ec2,alb,rds,lambda --output=./web-app-infra
+# Specific resource discovery with state file
+./transformer aws --region=us-east-1 --resources=vpc,ec2,alb,rds,lambda --output=./web-app-infra --statefile
 
-# Import with custom file name
+# Import with custom file name and state file
 ./transformer import --resources=s3,rds --file=my-import.tf --output=./imports --verbose
 
 # Import with state file generation
@@ -247,7 +325,7 @@ tofu plan
 
 ## 📁 Generated Structure
 
-The tool generates a complete OpenTofu project structure:
+The tool generates a complete OpenTofu project structure with **Terraformer-like state file generation**:
 
 ### Infrastructure Generation (`transformer aws`)
 
@@ -257,6 +335,7 @@ output-directory/
 ├── variables.tf         # Variable definitions including sensitive values
 ├── outputs.tf          # Output definitions for all modules
 ├── versions.tf         # Provider version constraints
+├── terraform.tfstate   # Complete state file (Terraformer-like) ✨ NEW
 ├── README.md           # Comprehensive documentation
 └── modules/            # Resource-specific modules
     ├── vpc/
@@ -274,16 +353,20 @@ output-directory/
 ```
 output-directory/
 ├── import.tf            # Resource definitions and import statements
-├── import.sh            # Automated import script
+├── import.sh            # Enhanced automated import script ✨ ENHANCED
+├── terraform.tfstate    # State file template (if --state specified) ✨ NEW
 ├── README.md            # Import process guide
-└── terraform.tfstate    # State file template (if --state specified)
+└── backup/              # State file backups ✨ NEW
+    └── terraform.tfstate.backup
 ```
 
 ## 🔧 Key Features
 
 ### Infrastructure Generation
 
-- **Comprehensive Resource Discovery**: Discovers and generates OpenTofu configurations for 58 AWS services
+- **Comprehensive Resource Discovery**: Discovers and generates OpenTofu configurations for 57 AWS services
+- **Terraformer-like State File Generation**: Automatically generates `terraform.tfstate` files for seamless OpenTofu integration ✨ **NEW**
+- **Correct Resource Type Mapping**: All 57 services mapped to proper OpenTofu resource types ✨ **ENHANCED**
 - **Modular Architecture**: Each AWS service gets its own module with clean dependencies
 - **Security Best Practices**: Properly handles sensitive data with variables and encryption
 - **Production Ready**: Includes comprehensive error handling, deduplication, and validation
@@ -291,10 +374,19 @@ output-directory/
 ### Import Generation
 
 - **Automated Import Statements**: Generates OpenTofu import commands for existing resources
+- **Enhanced Import Scripts**: Pre-flight checks, backup/restore, and improved UX ✨ **ENHANCED**
+- **State File Generation**: Optional state file template generation ✨ **NEW**
 - **Resource Definitions**: Creates template resource definitions for customization
-- **Automated Scripts**: Generates shell scripts to automate the import process
-- **State Management**: Optional state file template generation
 - **Comprehensive Documentation**: Step-by-step import guides and troubleshooting
+
+### Terraformer-like State File Generation ✨ **NEW**
+
+- **Complete State File**: Generates full `terraform.tfstate` with all discovered resources
+- **Correct Resource Types**: Maps all 57 AWS services to proper OpenTofu resource types
+- **Valid JSON Structure**: Ensures proper JSON formatting and syntax
+- **Resource Attributes**: Includes ID, ARN, tags, and other essential attributes
+- **OpenTofu Compatibility**: Validates with `tofu init` and `tofu plan` without errors
+- **Immediate Usability**: Ready to use without manual import process
 
 ### Security & Sensitive Data Handling
 
@@ -324,6 +416,7 @@ output-directory/
 3. **Test in Non-Production**: Always test in a safe environment first
 4. **Backup Existing Infrastructure**: Create backups before making changes
 5. **Check Dependencies**: Ensure all referenced resources exist
+6. **Validate State File**: Verify generated `terraform.tfstate` is correct ✨ **NEW**
 
 ### Before Importing Existing Resources
 
@@ -332,6 +425,7 @@ output-directory/
 3. **Test Import Process**: Test the import process in a non-production environment
 4. **Verify Resource IDs**: Ensure resource IDs are correct and resources exist
 5. **Check Permissions**: Verify AWS permissions for import operations
+6. **Use Enhanced Import Script**: Leverage the improved import script with pre-flight checks ✨ **ENHANCED**
 
 ### Security Checklist
 
@@ -342,6 +436,7 @@ output-directory/
 - [ ] Review public access settings
 - [ ] Verify KMS key permissions
 - [ ] Test with subset of resources first
+- [ ] Validate generated state file ✨ **NEW**
 
 ## 🐛 Troubleshooting
 
@@ -373,7 +468,20 @@ output-directory/
    tofu plan
    ```
 
-4. **Import Process Issues**
+4. **State File Issues** ✨ **NEW**
+   ```bash
+   # Validate state file JSON syntax
+   cat terraform.tfstate | jq .
+   
+   # Check for schema errors
+   tofu init
+   tofu plan
+   
+   # Verify resource type mappings
+   grep '"type": "aws_' terraform.tfstate | sort | uniq
+   ```
+
+5. **Import Process Issues**
    ```bash
    # Verify resource exists
    aws ec2 describe-instances --instance-ids i-12345678
@@ -383,16 +491,19 @@ output-directory/
    
    # Remove conflicting resources from state
    tofu state rm aws_instance.example
+   
+   # Use enhanced import script with backup
+   ./import.sh
    ```
 
 ### Debug Mode
 
 ```bash
 # Enable verbose logging
-./transformer aws --region=us-east-1 --all --output=./debug --verbose
+./transformer aws --region=us-east-1 --all --output=./debug --statefile --verbose
 
 # Check specific resource types
-./transformer aws --region=us-east-1 --resources=vpc,ec2 --output=./test --verbose
+./transformer aws --region=us-east-1 --resources=vpc,ec2 --output=./test --statefile --verbose
 
 # Debug import generation
 ./transformer import --resources=vpc,ec2 --output=./debug-import --verbose
@@ -418,7 +529,7 @@ cd import-infra
 # Review resource definitions
 cat import.tf
 
-# Review import script
+# Review enhanced import script
 cat import.sh
 
 # Review documentation
@@ -443,13 +554,13 @@ resource "aws_vpc" "my_vpc" {
 }
 ```
 
-### Step 4: Run Import Process
+### Step 4: Run Enhanced Import Process
 
 ```bash
 # Make script executable
 chmod +x import.sh
 
-# Run automated import
+# Run enhanced automated import with pre-flight checks
 ./import.sh
 
 # Or run commands manually
@@ -475,15 +586,17 @@ tofu apply
 transformer/
 ├── cmd/                    # CLI commands
 │   ├── root.go            # Root command setup
-│   ├── aws.go             # AWS discovery command
-│   └── import.go          # Import generation command
+│   ├── aws.go             # AWS discovery command (with statefile flag) ✨ ENHANCED
+│   └── import.go          # Import generation command (with enhanced features) ✨ ENHANCED
 ├── internal/              # Core application logic
 │   ├── aws/              # AWS service integration
-│   │   ├── client.go     # AWS client management (58+ services)
+│   │   ├── client.go     # AWS client management (57+ services)
 │   │   ├── discovery.go  # Resource discovery logic
-│   │   └── types.go      # 58+ resource type definitions
+│   │   └── types.go      # 57+ resource type definitions
 │   ├── generator/        # OpenTofu code generation
-│   │   └── generator.go  # Configuration file generation
+│   │   ├── generator.go  # Configuration file generation (with state file generation) ✨ ENHANCED
+│   │   ├── fixes.go      # Compatibility fixes
+│   │   └── import.go     # Import generation logic (with enhanced features) ✨ ENHANCED
 │   └── utils/            # Utility functions
 ├── main.go               # Application entry point
 ├── go.mod               # Go module definition
@@ -494,10 +607,11 @@ transformer/
 
 ### Key Components
 
-- **AWS Client**: Manages 58+ AWS SDK connections and service clients
-- **Discovery Engine**: Discovers resources across all 58 AWS services
-- **Generator**: Converts discovered resources to OpenTofu HCL
-- **CLI Interface**: User-friendly command-line interface
+- **AWS Client**: Manages 57+ AWS SDK connections and service clients
+- **Discovery Engine**: Discovers resources across all 57 AWS services
+- **Generator**: Converts discovered resources to OpenTofu HCL with state file generation ✨ **ENHANCED**
+- **Resource Type Mapper**: Maps all 57 AWS services to correct OpenTofu resource types ✨ **NEW**
+- **CLI Interface**: User-friendly command-line interface with enhanced flags
 
 ## 🤝 Contributing
 
@@ -524,13 +638,16 @@ make build
 2. **Implement Discovery** in `internal/aws/discovery.go`
 3. **Define Resource Type** in `internal/aws/types.go`
 4. **Add Generation Logic** in `internal/generator/generator.go`
-5. **Update CLI** in `cmd/aws.go`
+5. **Add Resource Type Mapping** in `internal/generator/generator.go` ✨ **NEW**
+6. **Update CLI** in `cmd/aws.go`
 
 ### Service Implementation Status
 
-- **Fully Implemented**: 58 services with complete discovery and generation
-- **Total Coverage**: 58 AWS services with specific resource types
+- **Fully Implemented**: 57 services with complete discovery and generation
+- **Total Coverage**: 57 AWS services with specific resource types
 - **No Generic Resources**: All services have proper type definitions
+- **State File Generation**: All services support Terraformer-like state file generation ✨ **NEW**
+- **Correct Resource Mapping**: All services mapped to proper OpenTofu resource types ✨ **ENHANCED**
 
 ## 📄 License
 
@@ -553,3 +670,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 **Made with ❤️ for the OpenTofu community**
+
+**✨ Enhanced with Terraformer-like state file generation and correct resource type mapping for all 57 AWS services!**
