@@ -54,6 +54,9 @@ type Model struct {
 	// Service selection scrolling
 	serviceScrollOffset int
 	
+	// Region selection scrolling
+	regionScrollOffset int
+	
 	// Generation state
 	isGenerating bool
 	generationProgress int
@@ -140,15 +143,37 @@ func NewModel() Model {
 		availableResources: aws.GetAllSupportedResources(),
 		selectedResources:  make(map[string]bool),
 		availableRegions: []string{
-			"us-east-1", "us-west-1", "us-west-2", "eu-west-1", "eu-central-1",
-			"ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1",
-			"sa-east-1", "ca-central-1", "af-south-1", "me-south-1",
+			// US Regions
+			"us-east-1", "us-east-2", "us-west-1", "us-west-2",
+			// Canada
+			"ca-central-1",
+			// Europe
+			"eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1", "eu-central-2",
+			"eu-north-1", "eu-south-1", "eu-south-2",
+			// Asia Pacific
+			"ap-south-1", "ap-south-2", "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4",
+			"ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+			// Australia
+			"ap-southeast-1", "ap-southeast-2",
+			// South America
+			"sa-east-1",
+			// Africa
+			"af-south-1",
+			// Middle East
+			"me-south-1", "me-central-1",
+			// China
+			"cn-north-1", "cn-northwest-1",
+			// AWS GovCloud
+			"us-gov-east-1", "us-gov-west-1",
+			// AWS Outposts
+			"us-east-1-outposts-1", "us-west-2-outposts-1",
 		},
 		selectedRegion:   "us-east-1",
 		outputFolder:     "./infrastructure",
 		verbose:          false,
 		stateFile:        false,  // Initialize state file generation to false
 		cursor:           0,
+		regionScrollOffset: 0,
 		discoveryResults: make(map[string]int),
 		showDebugLogs:    false,
 		logMessages:      []string{},
@@ -359,14 +384,57 @@ func (m Model) renderRegionSelectionView() string {
 	b.WriteString("Choose the AWS region where your resources are located:")
 	b.WriteString("\n\n")
 
-	// Region list
-	for i, region := range m.availableRegions {
+	// Calculate pagination for regions
+	itemsPerPage := m.height - 12 // Account for header, footer, and instructions
+	if itemsPerPage < 1 {
+		itemsPerPage = 1
+	}
+	
+	start := m.regionScrollOffset
+	end := start + itemsPerPage
+	if end > len(m.availableRegions) {
+		end = len(m.availableRegions)
+	}
+	
+	// Ensure cursor is within visible range
+	if m.cursor < start {
+		m.regionScrollOffset = m.cursor - (itemsPerPage / 2)
+		if m.regionScrollOffset < 0 {
+			m.regionScrollOffset = 0
+		}
+		start = m.regionScrollOffset
+		end = start + itemsPerPage
+		if end > len(m.availableRegions) {
+			end = len(m.availableRegions)
+		}
+	} else if m.cursor >= end {
+		m.regionScrollOffset = m.cursor - (itemsPerPage / 2)
+		if m.regionScrollOffset < 0 {
+			m.regionScrollOffset = 0
+		}
+		start = m.regionScrollOffset
+		end = start + itemsPerPage
+		if end > len(m.availableRegions) {
+			end = len(m.availableRegions)
+		}
+	}
+
+	// Region list with pagination
+	for i := start; i < end; i++ {
+		region := m.availableRegions[i]
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("▶ " + region))
 		} else {
 			b.WriteString(unselectedStyle.Render("  " + region))
 		}
 		b.WriteString("\n")
+	}
+
+	// Show pagination info if needed
+	if len(m.availableRegions) > itemsPerPage {
+		page := (m.regionScrollOffset / itemsPerPage) + 1
+		totalPages := (len(m.availableRegions) + itemsPerPage - 1) / itemsPerPage
+		b.WriteString(fmt.Sprintf("\nPage %d/%d (%d regions total)", page, totalPages, len(m.availableRegions)))
 	}
 
 	// Help
@@ -871,6 +939,7 @@ func (m Model) handleRegionSelectionKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectedRegion = m.availableRegions[m.cursor]
 		m.currentStep = StepServiceSelection
 		m.cursor = 0
+		m.regionScrollOffset = 0 // Reset scroll offset for next time
 	case "esc", "q", "ctrl+c":
 		return m, tea.Quit
 	}

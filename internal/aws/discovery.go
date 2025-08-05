@@ -508,13 +508,17 @@ func (c *Client) discoverS3Resources() ([]Resource, error) {
 			Bucket: bucket.Name,
 		})
 		if err != nil {
+			// Skip buckets where we can't get location (might be permission issues)
 			continue
 		}
 
 		// Only include buckets in the current region
+		// us-east-1 buckets have empty LocationConstraint, other regions have the region name
 		if location.LocationConstraint != "" && string(location.LocationConstraint) != c.region {
 			continue
 		}
+		// For us-east-1, LocationConstraint is empty, so we include all buckets with empty constraint
+		// For other regions, we check if the constraint matches the current region
 
 		// Get bucket versioning
 		versioning, err := c.s3Client.GetBucketVersioning(context.TODO(), &s3.GetBucketVersioningInput{
@@ -537,11 +541,12 @@ func (c *Client) discoverS3Resources() ([]Resource, error) {
 			Bucket: bucket.Name,
 		})
 		if err != nil {
-			continue
+			// Don't skip the bucket if tags fail - just use empty tags
+			// This is normal for buckets without tags
 		}
 
 		tagMap := make(map[string]string)
-		if tags.TagSet != nil {
+		if tags != nil && tags.TagSet != nil {
 			for _, tag := range tags.TagSet {
 				if tag.Key != nil && tag.Value != nil {
 					tagMap[*tag.Key] = *tag.Value

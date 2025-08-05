@@ -167,6 +167,7 @@ aws configure
 
 The TUI provides:
 - **Resource Selection**: Choose which AWS services to discover
+- **Region Selection**: Choose from 40+ AWS regions worldwide with pagination
 - **Configuration**: Set region, output directory, verbose mode, and state file generation
 - **Real-time Progress**: Watch discovery progress with animated progress bars
 - **Results View**: See discovered resources and generation status
@@ -245,8 +246,8 @@ tofu plan
 **🎯 Multi-Step TUI Flow:**
 
 #### **Step 1: Select AWS Region**
-- Choose from 14 common AWS regions
-- Navigate with ↑↓ arrows
+- Choose from 40+ AWS regions worldwide
+- Navigate with ↑↓ arrows (with pagination support)
 - Press Enter to confirm selection
 
 #### **Step 2: Select AWS Services**

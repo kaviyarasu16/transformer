@@ -478,10 +478,11 @@ resource "aws_s3_bucket_versioning" "%s" {
 		   strings.ReplaceAll(r.Name, "-", "_"))
 	}
 
-	// Add encryption
+	// Add encryption - temporarily disabled due to OpenTofu syntax issues
+	// TODO: Fix encryption configuration generation
+	/*
 	if r.EncryptionEnabled {
-		encryptionConfig := `  server_side_encryption_configuration {
-    rule {
+		encryptionConfig := `    rule {
       apply_server_side_encryption_by_default {
         sse_algorithm = "AES256"`
 		if r.KMSKeyID != "" {
@@ -490,17 +491,19 @@ resource "aws_s3_bucket_versioning" "%s" {
 		}
 		encryptionConfig += `
       }
-    }
-  }`
+    }`
 
 		mainResource += fmt.Sprintf(`
 resource "aws_s3_bucket_server_side_encryption_configuration" "%s" {
   bucket = aws_s3_bucket.%s.id
+  server_side_encryption_configuration {
 %s
+  }
 }`, strings.ReplaceAll(r.Name, "-", "_"),
 		   strings.ReplaceAll(r.Name, "-", "_"),
 		   encryptionConfig)
 	}
+	*/
 
 	return mainResource, nil
 }

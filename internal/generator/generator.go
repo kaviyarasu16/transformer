@@ -68,16 +68,7 @@ func (g *Generator) Generate(resources []aws.Resource, region string, generateSt
 		return fmt.Errorf("failed to generate README.md: %w", err)
 	}
 
-	// Generate modules for each resource type
-	for resourceType, resourceList := range resourceGroups {
-		if len(resourceList) > 0 {
-			if err := g.generateModule(resourceType, resourceList); err != nil {
-				if g.verbose {
-					fmt.Printf("Warning: Failed to generate module for %s: %v\n", resourceType, err)
-				}
-			}
-		}
-	}
+	// Resources are now generated directly in main.tf instead of modules
 
 	return nil
 }
@@ -101,14 +92,6 @@ func (g *Generator) generateMain(resourceGroups map[string][]aws.Resource, regio
 # Configure the AWS Provider
 provider "aws" {
   region = "%s"
-  
-  default_tags {
-    tags = {
-      Environment = "production"
-      ManagedBy   = "opentofu"
-      Project     = "aws-transformer"
-    }
-  }
 }
 
 # Global variables are defined in variables.tf
@@ -118,10 +101,10 @@ data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
 
-# Module calls
+# Resource definitions
 `, region, region)
 
-	// Add module calls for each resource type
+	// Generate resources directly at root level instead of using modules
 	resourceTypes := make([]string, 0, len(resourceGroups))
 	for resourceType := range resourceGroups {
 		resourceTypes = append(resourceTypes, resourceType)
@@ -131,56 +114,28 @@ data "aws_region" "current" {}
 	for _, resourceType := range resourceTypes {
 		resources := resourceGroups[resourceType]
 		if len(resources) > 0 {
-			moduleName := strings.ToLower(resourceType)
+			content += fmt.Sprintf(`
+# %s Resources
+`, strings.ToUpper(resourceType))
 			
-			// Add special handling for RDS module
-			if resourceType == "rds" {
-				content += fmt.Sprintf(`
-module "%s" {
-  source = "./modules/%s"
-  
-  # RDS password variables
-  rds_password_aiml_dev_1e = var.rds_password_aiml_dev_1e
-  rds_password_postgres_dev_onengine = var.rds_password_postgres_dev_onengine
-  rds_password_retool = var.rds_password_retool
-  rds_password_strapi_db_instance = var.rds_password_strapi_db_instance
-  
-  # Add module-specific variables here
-  # Example:
-  # vpc_id = module.vpc.vpc_id
-}
-`, moduleName, moduleName)
-			} else {
-				content += fmt.Sprintf(`
-module "%s" {
-  source = "./modules/%s"
-  
-  # Add module-specific variables here
-  # Example:
-  # vpc_id = module.vpc.vpc_id
-}
-`, moduleName, moduleName)
+			// Generate each resource directly
+			for _, resource := range resources {
+				tofuConfig, err := resource.ToOpenTofu()
+				if err != nil {
+					if g.verbose {
+						fmt.Printf("Warning: Failed to generate OpenTofu config for resource %s: %v\n", resource.GetName(), err)
+					}
+					continue
+				}
+
+				// Apply OpenTofu compatibility fixes
+				fixedConfig := g.fixes.ApplyAllFixes(resource.GetType(), tofuConfig)
+				content += fixedConfig + "\n"
 			}
 		}
 	}
 
 	// Outputs are defined in outputs.tf
-	content += `
-`
-
-	// Add module outputs
-	for _, resourceType := range resourceTypes {
-		resources := resourceGroups[resourceType]
-		if len(resources) > 0 {
-			moduleName := strings.ToLower(resourceType)
-			content += fmt.Sprintf(`
-output "%s_outputs" {
-  description = "Outputs from %s module"
-  value       = module.%s
-}
-`, moduleName, resourceType, moduleName)
-		}
-	}
 
 	return g.writeFile(filepath.Join(g.outputDir, "main.tf"), content)
 }
@@ -406,10 +361,19 @@ output "account_id" {
 			content += fmt.Sprintf(`# %s outputs
 output "%s_resources" {
   description = "List of %s resources"
-  value = module.%s
+  value = {
+`, strings.ToUpper(resourceType), resourceType, resourceType)
+			
+			for _, resource := range resources {
+				resourceName := g.sanitizeResourceName(resource.GetName())
+				content += fmt.Sprintf(`    %s = aws_%s.%s
+`, resourceName, g.mapServiceToResourceType(resourceType), resourceName)
+			}
+			
+			content += `  }
 }
 
-`, strings.ToUpper(resourceType), resourceType, resourceType, strings.ToLower(resourceType))
+`
 		}
 	}
 
@@ -927,13 +891,11 @@ func (g *Generator) generateStateFile(resourceGroups map[string][]aws.Resource, 
 
 	for _, resourceType := range resourceTypes {
 		resources := resourceGroups[resourceType]
-		for i, resource := range resources {
+		for _, resource := range resources {
 			currentResource++
 			// Use sanitized name for consistency with OpenTofu configuration
 			resourceName := g.sanitizeResourceName(resource.GetName())
-			if i > 0 {
-				resourceName = fmt.Sprintf("%s_%d", resourceName, i)
-			}
+			// Don't add suffixes to match configuration generation
 			isLastResource := currentResource == totalResources
 			content += g.generateStateResource(resource, resourceName, resourceType, isLastResource)
 		}
@@ -1043,6 +1005,9 @@ func (g *Generator) generateStateResource(resource aws.Resource, resourceName, r
 		resourceID = resource.GetID()
 	}
 	
+	// Use only the resource's own tags (no default tags)
+	allTags := resource.GetTags()
+	
 	return fmt.Sprintf(`    {
       "mode": "managed",
       "type": "aws_%s",
@@ -1062,7 +1027,7 @@ func (g *Generator) generateStateResource(resource aws.Resource, resourceName, r
           "private": "bnVsbA=="
         }
       ]
-    }%s`, openTofuResourceType, resourceName, resourceID, resource.GetARN(), resource.GetName(), resource.GetTagsJSON(), resource.GetTagsJSON(), comma)
+    }%s`, openTofuResourceType, resourceName, resourceID, resource.GetARN(), resource.GetName(), resource.GetTagsJSON(), g.formatTags(allTags), comma)
 }
 
 // formatTags formats tags for JSON output
