@@ -167,9 +167,10 @@ aws configure
 
 The TUI provides:
 - **Resource Selection**: Choose which AWS services to discover
-- **Configuration**: Set region, output directory, and verbose mode
+- **Configuration**: Set region, output directory, verbose mode, and state file generation
 - **Real-time Progress**: Watch discovery progress with animated progress bars
 - **Results View**: See discovered resources and generation status
+- **State File Generation**: Optional Terraformer-like state file creation for easy import
 - **Beautiful UI**: Modern terminal interface with colors and animations
 
 ### 3. Command Line Mode
@@ -257,11 +258,13 @@ tofu plan
 #### **Step 3: Configure Output**
 - Set output folder path (default: `./infrastructure`)
 - Toggle verbose mode with Space
+- Toggle state file generation with Space (creates `terraform.tfstate` for easy import)
 - Press Enter to continue
 
 #### **Step 4: Confirm Configuration**
 - Review selected region, services, and settings
 - Shows "ALL SERVICES" if all selected
+- Displays verbose mode and state file generation status
 - Two buttons: "Generate OpenTofu" and "Cancel"
 - Use ←→ to navigate buttons
 
@@ -274,7 +277,14 @@ tofu plan
 - Summary of discovered resources
 - Resource counts by service type
 - Output directory location
-- Press Enter to exit
+- State file generation status (if enabled)
+- Press Enter to generate files
+
+#### **Step 7: Generate OpenTofu Files**
+- Real-time progress bar for file generation
+- Shows state file generation progress (if enabled)
+- Completion status with file locations
+- Auto-exit after completion
 
 **🎨 Enhanced Features:**
 - **Step-by-step guided flow** with clear progress

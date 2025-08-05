@@ -28,6 +28,7 @@ type Model struct {
 	// Configuration
 	outputFolder string
 	verbose      bool
+	stateFile    bool  // New field for state file generation
 	
 	// UI state
 	cursor int
@@ -146,6 +147,7 @@ func NewModel() Model {
 		selectedRegion:   "us-east-1",
 		outputFolder:     "./infrastructure",
 		verbose:          false,
+		stateFile:        false,  // Initialize state file generation to false
 		cursor:           0,
 		discoveryResults: make(map[string]int),
 		showDebugLogs:    false,
@@ -501,7 +503,7 @@ func (m Model) renderOutputFolderView() string {
 	b.WriteString("\n\n")
 
 	// Instructions
-	b.WriteString("Enter the output folder for generated OpenTofu files:")
+	b.WriteString("Configure the output settings for generated OpenTofu files:")
 	b.WriteString("\n\n")
 
 	// Output folder input
@@ -536,13 +538,33 @@ func (m Model) renderOutputFolderView() string {
 			b.WriteString(unselectedStyle.Render("  ☐ Verbose Mode"))
 		}
 	}
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render("    Shows detailed progress and debug information"))
+	b.WriteString("\n\n")
+
+	// State file generation toggle
+	if m.cursor == 2 {
+		if m.stateFile {
+			b.WriteString(selectedStyle.Render("▶ ☑ Generate State File"))
+		} else {
+			b.WriteString(selectedStyle.Render("▶ ☐ Generate State File"))
+		}
+	} else {
+		if m.stateFile {
+			b.WriteString(unselectedStyle.Render("  ☑ Generate State File"))
+		} else {
+			b.WriteString(unselectedStyle.Render("  ☐ Generate State File"))
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render("    Creates a terraform.tfstate file for easy import"))
 	b.WriteString("\n\n")
 
 	// Help
 	if m.isEditingOutputFolder {
 		b.WriteString(helpStyle.Render("Type folder name, Enter to confirm, Esc to cancel"))
 	} else {
-		b.WriteString(helpStyle.Render("Space to edit folder/toggle verbose, Enter to continue"))
+		b.WriteString(helpStyle.Render("Space to edit folder/toggle options, Enter to continue"))
 	}
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
@@ -591,6 +613,10 @@ func (m Model) renderConfirmationView() string {
 
 	// Verbose mode
 	b.WriteString(fmt.Sprintf("Verbose Mode: %t", m.verbose))
+	b.WriteString("\n")
+
+	// State file generation
+	b.WriteString(fmt.Sprintf("Generate State File: %t", m.stateFile))
 	b.WriteString("\n\n")
 
 	// Buttons
@@ -754,6 +780,9 @@ func (m Model) renderResultsView() string {
 
 	// Output location
 	b.WriteString(fmt.Sprintf("\n\nOutput directory: %s", m.outputFolder))
+	if m.stateFile {
+		b.WriteString("\nState file: Will be generated for easy import")
+	}
 
 	// Help
 	b.WriteString("\n\n" + helpStyle.Render("Enter to generate OpenTofu files, ↑↓ to scroll, Esc to exit"))
@@ -789,10 +818,17 @@ func (m Model) renderGenerationView() string {
 		b.WriteString("✅ Generation complete!")
 		b.WriteString("\n")
 		b.WriteString("✅ OpenTofu files generated successfully!")
+		if m.stateFile {
+			b.WriteString("\n")
+			b.WriteString("✅ State file generated for easy import!")
+		}
 	} else {
 		// Animated spinner
 		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		b.WriteString(spinner[m.cursor%len(spinner)] + " Generating OpenTofu files...")
+		if m.stateFile {
+			b.WriteString(" (with state file)")
+		}
 	}
 
 	// Show recent log messages if verbose mode is enabled
@@ -937,9 +973,12 @@ func (m Model) handleOutputFolderKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// Start editing output folder
 				m.isEditingOutputFolder = true
 				m.inputBuffer = m.outputFolder
-			} else {
+			} else if m.cursor == 1 {
 				// Toggle verbose mode
 				m.verbose = !m.verbose
+			} else if m.cursor == 2 {
+				// Toggle state file generation
+				m.stateFile = !m.stateFile
 			}
 		case "enter":
 			// Move to confirmation step
@@ -950,7 +989,7 @@ func (m Model) handleOutputFolderKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < 1 {
+			if m.cursor < 2 { // Adjusted for new options
 				m.cursor++
 			}
 		case "esc":
@@ -1194,14 +1233,20 @@ func (m Model) generateOpenTofuFiles() tea.Cmd {
 	// Start generation in background
 	go func() {
 		m.addLogMessage("🔧 Starting OpenTofu file generation...")
+		if m.stateFile {
+			m.addLogMessage("📄 State file generation enabled")
+		}
 		
 		// Generate OpenTofu files
 		gen := generator.NewGenerator(m.outputFolder, m.verbose)
-		err := gen.Generate(resources, m.selectedRegion, false) // TUI doesn't generate state file by default
+		err := gen.Generate(resources, m.selectedRegion, m.stateFile) // Pass stateFile option
 		if err != nil {
 			m.addLogMessage(fmt.Sprintf("❌ Failed to generate OpenTofu files: %v", err))
 		} else {
 			m.addLogMessage(fmt.Sprintf("✅ OpenTofu files generated successfully in %s", m.outputFolder))
+			if m.stateFile {
+				m.addLogMessage("✅ State file generated for easy import")
+			}
 		}
 	}()
 

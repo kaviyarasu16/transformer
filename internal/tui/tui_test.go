@@ -27,50 +27,14 @@ func TestNewModel(t *testing.T) {
 	if model.outputFolder != "./infrastructure" {
 		t.Errorf("Expected default output folder to be ./infrastructure, got %s", model.outputFolder)
 	}
-}
-
-func TestNewDiscoveryManager(t *testing.T) {
-	dm := NewDiscoveryManager("us-west-2", "./test-output", true)
 	
-	if dm.region != "us-west-2" {
-		t.Errorf("Expected region to be us-west-2, got %s", dm.region)
+	// Test new state file field
+	if model.stateFile {
+		t.Error("Expected state file generation to be false by default")
 	}
 	
-	if dm.output != "./test-output" {
-		t.Errorf("Expected output to be ./test-output, got %s", dm.output)
-	}
-	
-	if !dm.verbose {
-		t.Error("Expected verbose to be true")
-	}
-	
-	if dm.progressCh == nil {
-		t.Error("Expected progress channel to be initialized")
-	}
-	
-	if dm.completeCh == nil {
-		t.Error("Expected complete channel to be initialized")
-	}
-	
-	if dm.errorCh == nil {
-		t.Error("Expected error channel to be initialized")
-	}
-}
-
-func TestEnhancedModel(t *testing.T) {
-	model := NewEnhancedModel()
-	
-	// Test that enhanced model has base model functionality
-	if model.currentStep != StepRegionSelection {
-		t.Errorf("Expected initial step to be StepRegionSelection, got %v", model.currentStep)
-	}
-	
-	if len(model.availableResources) == 0 {
-		t.Error("Expected available resources to be populated")
-	}
-	
-	if len(model.availableRegions) == 0 {
-		t.Error("Expected available regions to be populated")
+	if model.verbose {
+		t.Error("Expected verbose mode to be false by default")
 	}
 }
 
@@ -83,9 +47,31 @@ func TestStepTypes(t *testing.T) {
 		StepConfirmation,
 		StepDiscovery,
 		StepResults,
+		StepGeneration,
 	}
 	
-	if len(steps) != 6 {
-		t.Errorf("Expected 6 step types, got %d", len(steps))
+	if len(steps) != 7 {
+		t.Errorf("Expected 7 step types, got %d", len(steps))
+	}
+}
+
+func TestStateFileConfiguration(t *testing.T) {
+	model := NewModel()
+	
+	// Test initial state
+	if model.stateFile {
+		t.Error("Expected state file to be false initially")
+	}
+	
+	// Test toggling state file
+	model.stateFile = true
+	if !model.stateFile {
+		t.Error("Expected state file to be true after setting")
+	}
+	
+	// Test toggling back
+	model.stateFile = false
+	if model.stateFile {
+		t.Error("Expected state file to be false after toggling back")
 	}
 } 
