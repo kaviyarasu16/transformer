@@ -101,10 +101,10 @@ data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
 
-# Resource definitions
+# Module calls
 `, region, region)
 
-	// Generate resources directly at root level instead of using modules
+	// Generate modules for each resource type
 	resourceTypes := make([]string, 0, len(resourceGroups))
 	for resourceType := range resourceGroups {
 		resourceTypes = append(resourceTypes, resourceType)
@@ -114,28 +114,22 @@ data "aws_region" "current" {}
 	for _, resourceType := range resourceTypes {
 		resources := resourceGroups[resourceType]
 		if len(resources) > 0 {
-			content += fmt.Sprintf(`
-# %s Resources
-`, strings.ToUpper(resourceType))
-			
-			// Generate each resource directly
-			for _, resource := range resources {
-				tofuConfig, err := resource.ToOpenTofu()
-				if err != nil {
-					if g.verbose {
-						fmt.Printf("Warning: Failed to generate OpenTofu config for resource %s: %v\n", resource.GetName(), err)
-					}
-					continue
+			// Generate the module
+			if err := g.generateModule(resourceType, resources); err != nil {
+				if g.verbose {
+					fmt.Printf("Warning: Failed to generate module for %s: %v\n", resourceType, err)
 				}
-
-				// Apply OpenTofu compatibility fixes
-				fixedConfig := g.fixes.ApplyAllFixes(resource.GetType(), tofuConfig)
-				content += fixedConfig + "\n"
+				continue
 			}
+
+			// Add module call to main.tf
+			content += fmt.Sprintf(`
+module "%s" {
+  source = "./modules/%s"
+}
+`, resourceType, strings.ToLower(resourceType))
 		}
 	}
-
-	// Outputs are defined in outputs.tf
 
 	return g.writeFile(filepath.Join(g.outputDir, "main.tf"), content)
 }
@@ -366,8 +360,8 @@ output "%s_resources" {
 			
 			for _, resource := range resources {
 				resourceName := g.sanitizeResourceName(resource.GetName())
-				content += fmt.Sprintf(`    %s = aws_%s.%s
-`, resourceName, g.mapServiceToResourceType(resourceType), resourceName)
+				content += fmt.Sprintf(`    %s = module.%s.%s
+`, resourceName, resourceType, resourceName)
 			}
 			
 			content += `  }
@@ -695,6 +689,19 @@ func (g *Generator) generateModuleVariables(moduleDir, resourceType string, reso
   default = []
 }
 `
+	case "s3":
+		content += `variable "s3_buckets" {
+  description = "S3 bucket configurations"
+  type = list(object({
+    name = string
+    versioning_enabled = bool
+    encryption_enabled = bool
+    kms_key_id = string
+    tags = map(string)
+  }))
+  default = []
+}
+`
 	default:
 		content += fmt.Sprintf(`variable "%s_resources" {
   description = "%s resource configurations"
@@ -803,6 +810,54 @@ output "db_endpoints" {
 			content += `# No RDS instances found
 `
 		}
+	case "s3":
+		// Generate outputs for S3 buckets
+		if len(resources) > 0 {
+			content += `output "bucket_names" {
+  description = "List of S3 bucket names"
+  value       = [
+`
+			for i, resource := range resources {
+				resourceName := g.sanitizeResourceName(resource.GetName())
+				if i > 0 {
+					content += ",\n"
+				}
+				content += fmt.Sprintf("    aws_s3_bucket.%s.bucket", resourceName)
+			}
+			content += `
+  ]
+}
+
+output "bucket_arns" {
+  description = "List of S3 bucket ARNs"
+  value       = [
+`
+			for i, resource := range resources {
+				resourceName := g.sanitizeResourceName(resource.GetName())
+				if i > 0 {
+					content += ",\n"
+				}
+				content += fmt.Sprintf("    aws_s3_bucket.%s.arn", resourceName)
+			}
+			content += `
+  ]
+}
+
+`
+			// Add individual bucket outputs
+			for _, resource := range resources {
+				resourceName := g.sanitizeResourceName(resource.GetName())
+				content += fmt.Sprintf(`output "%s" {
+  description = "S3 bucket %s"
+  value       = aws_s3_bucket.%s
+}
+
+`, resourceName, resource.GetName(), resourceName)
+			}
+		} else {
+			content += `# No S3 buckets found
+`
+		}
 	default:
 		// Skip problematic output references for certain resource types
 		if resourceType == "ec2" || resourceType == "rds" {
@@ -898,6 +953,15 @@ func (g *Generator) generateStateFile(resourceGroups map[string][]aws.Resource, 
 			// Don't add suffixes to match configuration generation
 			isLastResource := currentResource == totalResources
 			content += g.generateStateResource(resource, resourceName, resourceType, isLastResource)
+			
+			// Add dependent resources for S3 buckets with versioning
+			if resourceType == "s3" {
+				if s3Resource, ok := resource.(*aws.S3BucketResource); ok && s3Resource.VersioningEnabled {
+					// Add versioning resource to state file
+					versioningResourceName := resourceName
+					content += g.generateStateResource(resource, versioningResourceName, "s3_bucket_versioning", isLastResource)
+				}
+			}
 		}
 	}
 
@@ -982,7 +1046,15 @@ func (g *Generator) mapServiceToResourceType(serviceType string) string {
 // generateStateResource generates a state file resource entry
 func (g *Generator) generateStateResource(resource aws.Resource, resourceName, resourceType string, isLastResource bool) string {
 	// Map service type to specific OpenTofu resource type
-	openTofuResourceType := g.mapServiceToResourceType(resourceType)
+	var openTofuResourceType string
+	if resourceType == "s3_bucket_versioning" {
+		openTofuResourceType = "s3_bucket_versioning"
+	} else {
+		openTofuResourceType = g.mapServiceToResourceType(resourceType)
+	}
+	
+	// Keep the original resource type for state file
+	// Module-based resources are handled in the configuration, not state file
 	
 	// Generate a more complete state resource like Terraformer
 	comma := ","
@@ -1000,6 +1072,9 @@ func (g *Generator) generateStateResource(resource aws.Resource, resourceName, r
 		} else {
 			resourceID = resource.GetID()
 		}
+	} else if resourceType == "s3_bucket_versioning" {
+		// For S3 bucket versioning, the ID is the bucket name
+		resourceID = resource.GetName()
 	} else {
 		// For other resources, use the actual AWS resource ID
 		resourceID = resource.GetID()
@@ -1007,6 +1082,27 @@ func (g *Generator) generateStateResource(resource aws.Resource, resourceName, r
 	
 	// Use only the resource's own tags (no default tags)
 	allTags := resource.GetTags()
+	
+	// Generate attributes based on resource type
+	var attributes string
+	if resourceType == "s3_bucket_versioning" {
+		// For versioning resource, use bucket-specific attributes
+		attributes = fmt.Sprintf(`"id": "%s",
+            "bucket": "%s",
+            "versioning_configuration": [
+              {
+                "mfa_delete": "Disabled",
+                "status": "Enabled"
+              }
+            ]`, resourceID, resource.GetName())
+	} else {
+		// For other resources, use standard attributes
+		attributes = fmt.Sprintf(`"id": "%s",
+            "arn": "%s",
+            "name": "%s",
+            "tags": %s,
+            "tags_all": %s`, resourceID, resource.GetARN(), resource.GetName(), resource.GetTagsJSON(), g.formatTags(allTags))
+	}
 	
 	return fmt.Sprintf(`    {
       "mode": "managed",
@@ -1017,17 +1113,13 @@ func (g *Generator) generateStateResource(resource aws.Resource, resourceName, r
         {
           "schema_version": 0,
           "attributes": {
-            "id": "%s",
-            "arn": "%s",
-            "name": "%s",
-            "tags": %s,
-            "tags_all": %s
+            %s
           },
           "sensitive_attributes": [],
           "private": "bnVsbA=="
         }
       ]
-    }%s`, openTofuResourceType, resourceName, resourceID, resource.GetARN(), resource.GetName(), resource.GetTagsJSON(), g.formatTags(allTags), comma)
+    }%s`, openTofuResourceType, resourceName, attributes, comma)
 }
 
 // formatTags formats tags for JSON output
